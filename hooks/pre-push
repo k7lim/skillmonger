@@ -1,0 +1,62 @@
+#!/bin/bash
+# pre-push hook - Validates all skills before pushing
+# Part of the Iterative Skills Framework
+
+# Find project root (where .git is)
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
+  exit 0  # Not in a git repo, skip
+fi
+
+SKILLS_DIR="$PROJECT_ROOT/skills"
+VALIDATE_SCRIPT="$PROJECT_ROOT/scripts/validate-skill.sh"
+
+# Skip if no skills directory
+if [ ! -d "$SKILLS_DIR" ]; then
+  exit 0
+fi
+
+# Skip if no validation script
+if [ ! -x "$VALIDATE_SCRIPT" ]; then
+  echo "Warning: validate-skill.sh not found or not executable"
+  exit 0
+fi
+
+echo "Pre-push: Validating skills..."
+echo ""
+
+failed=0
+validated=0
+
+for skill_dir in "$SKILLS_DIR"/*/; do
+  if [ -d "$skill_dir" ] && [ -f "$skill_dir/SKILL.md" ]; then
+    skill_name=$(basename "$skill_dir")
+    echo "Checking: $skill_name"
+
+    if "$VALIDATE_SCRIPT" "$skill_dir" > /dev/null 2>&1; then
+      echo "  ✓ $skill_name passed"
+      ((validated++))
+    else
+      echo "  ✗ $skill_name FAILED"
+      # Show errors
+      "$VALIDATE_SCRIPT" "$skill_dir" 2>&1 | grep -E "^ERROR:" | sed 's/^/    /'
+      failed=1
+    fi
+    echo ""
+  fi
+done
+
+if [ $validated -eq 0 ]; then
+  echo "No skills found to validate."
+  exit 0
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if [ $failed -eq 1 ]; then
+  echo "✗ Pre-push check FAILED"
+  echo "Fix validation errors before pushing."
+  exit 1
+fi
+
+echo "✓ Pre-push check passed ($validated skill(s) validated)"
+exit 0
