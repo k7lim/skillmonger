@@ -1,0 +1,55 @@
+# Centers of Excellence Skill Configuration
+# Tri-file architecture extension (ignored by Codex/Antigravity)
+
+skill:
+  name: centers-of-excellence
+  version: 1.0.0
+  created: 2026-01-14
+  updated: 2026-01-14
+  author: kevin
+
+# Semantic triggers for skill matching
+triggers:
+  phrases:
+    - "centers of excellence"
+    - "top locations for"
+    - "where is [topic] most valued"
+    - "who's who list"
+    - "top countries for"
+    - "top cities for"
+    - "leading institutions for"
+    - "expertise centers"
+    - "find the best places for"
+    - "global leaders in"
+  keywords:
+    - excellence
+    - expertise
+    - leading
+    - top locations
+    - global centers
+
+# Dependencies and integrations
+dependencies:
+  tools:
+    - WebSearch
+  permissions:
+    - WebSearch
+
+# Loading behavior (for Claude lazy loading)
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+# Compaction settings
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+# Context budget guidance (tokens)
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
