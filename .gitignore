@@ -2,6 +2,9 @@
 dist/
 .claude/skills/
 
+# External vendor repos
+vendor/
+
 # OS files
 .DS_Store
 Thumbs.db

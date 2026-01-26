@@ -1,0 +1,14 @@
+skill:
+  name: remotion
+  version: 1.0.0
+  source: https://github.com/remotion-dev/remotion/tree/main/packages/skills/skills/remotion
+
+triggers:
+  phrases:
+    - "remotion"
+    - "create video"
+    - "video from react"
+    - "react video"
+
+dependencies:
+  tools: []
