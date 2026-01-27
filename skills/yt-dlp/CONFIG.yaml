@@ -1,0 +1,49 @@
+# yt-dlp Skill Configuration
+
+skill:
+  name: yt-dlp
+  version: 1.0.0
+  created: 2026-01-25
+  updated: 2026-01-25
+  author: kevin
+
+triggers:
+  phrases:
+    - "download video"
+    - "download youtube"
+    - "download playlist"
+    - "extract audio"
+    - "get subtitles"
+    - "get transcript"
+    - "yt-dlp"
+    - "youtube-dl"
+  keywords:
+    - download
+    - youtube
+    - playlist
+    - transcript
+    - subtitles
+    - audio extraction
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - yt-dlp
+    - ffmpeg
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 3000
+  memo_max: 2000
