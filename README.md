@@ -233,34 +233,51 @@ Graduate stable patterns to SKILL.md, purge resolved edge cases, bump version.
 
 ## Deployment
 
-### Local (Claude Code)
+Skills are deployed via symlinks. The global source of truth is `~/.local/share/skillmonger/skills/`.
+
+### Global Deployment
+
+Install to the central skillmonger directory and symlink from tool-specific locations:
 
 ```bash
-scripts/deploy-skill.sh skills/my-skill/
+# Deploy to all tools
+scripts/deploy-skill.sh skills/my-skill/ --global
+
+# Deploy to specific tools only
+scripts/deploy-skill.sh skills/my-skill/ --global --tools claude,codex
 ```
 
-Copies to `.claude/skills/` where Claude Code reads it.
+### Local (Project) Deployment
 
-### External Distribution
+Symlink from project directories to the skill source:
 
 ```bash
-# Directory format
-scripts/deploy-skill.sh skills/my-skill/ --target dist
+# Deploy to current project for all tools
+scripts/deploy-skill.sh skills/my-skill/ --local .
 
-# Zip (for Claude.ai upload)
-scripts/deploy-skill.sh skills/my-skill/ --format zip --target dist
+# Deploy to specific project and tools
+scripts/deploy-skill.sh skills/my-skill/ --local /path/to/project --tools claude
 ```
 
-### Cross-Platform
+### Combined Deployment
 
-| Platform | Location |
-|----------|----------|
-| Claude Code (global) | `~/.claude/skills/` |
-| OpenAI Codex (project) | `.codex/skills/` |
-| OpenAI Codex (global) | `~/.codex/skills/` |
-| Antigravity (project) | `.agent/skills/` |
-| Antigravity (global) | `~/.gemini/antigravity/skills/` |
-| Claude.ai | Upload zip via Settings > Features |
+```bash
+# Global + local deployment
+scripts/deploy-skill.sh skills/my-skill/ --global --local .
+
+# With zip for Claude.ai upload
+scripts/deploy-skill.sh skills/my-skill/ --global --format zip
+```
+
+### Cross-Platform Paths
+
+| Platform | Global | Project |
+|----------|--------|---------|
+| Skillmonger (source) | `~/.local/share/skillmonger/skills/` | — |
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
+| Codex | `~/.codex/skills/` | `.codex/skills/` |
+| OpenCode | `~/.config/opencode/skills/` | `.opencode/skills/` |
+| Claude.ai | Upload zip via Settings > Features | — |
 
 ---
 
@@ -268,11 +285,66 @@ scripts/deploy-skill.sh skills/my-skill/ --format zip --target dist
 
 | Script | Purpose |
 |--------|---------|
-| `new-skill.sh` | Create a new skill interactively |
+| `new-skill.sh` | Create a new skill directly in skillmonger |
+| `seed-skill.sh` | Capture a skill idea with minimal friction |
+| `develop-skill.sh` | Create a skill scaffold in sandbox for development |
+| `ship-skill.sh` | Ship a developed skill from sandbox to skillmonger |
 | `validate-skill.sh` | Validate skill structure and frontmatter |
 | `deploy-skill.sh` | Build and deploy skills |
 | `compact-memo.sh` | Guide compaction when iteration threshold reached |
 | `install-hooks.sh` | Install git pre-push hook for validation |
+
+---
+
+## Sandbox Development Workflow
+
+For rapid iteration with unrestricted agent permissions, develop skills in the sandbox first.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SANDBOX (yolo permissions)          HOST (skillmonger)        │
+│                                                                 │
+│  ~/Development/sandbox/              ~/Development/host/        │
+│  └── projects/skills/                └── skillmonger/           │
+│      └── my-skill/                       └── skills/            │
+│          ├── DESIGN.md  ←── think                               │
+│          ├── SKILL.md   ←── iterate    ──promote──►  my-skill/  │
+│          └── scripts/                                           │
+│              └── status-check.sh                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start (Sandbox)
+
+```bash
+# Capture an idea (from anywhere)
+seed-skill pdf-merger "combine PDFs with page selection"
+
+# When ready to build, create scaffold
+develop-skill
+
+# Develop with yolo agent permissions
+cd ~/Development/sandbox/projects/skills/my-skill
+claude  # runs via yolobox with unrestricted permissions
+
+# When stable, ship to skillmonger
+ship-skill ~/Development/sandbox/projects/skills/my-skill
+
+# Deploy for production use
+scripts/deploy-skill.sh skills/my-skill/
+```
+
+### Deterministic vs Natural Language
+
+The key insight: **scripts produce data, prompts interpret meaning**.
+
+| Aspect | Deterministic (script) | Natural Language (prompt) |
+|--------|------------------------|---------------------------|
+| State detection | "Is ffmpeg installed?" | "Is this version right for the user's needs?" |
+| Actions | `npm install remotion` | "Which template fits their video concept?" |
+| Error handling | Exit codes, JSON output | "How to explain this failure helpfully?" |
+
+Use `templates/DESIGN.md` to think through this split before building your skill. Every skill should ask: "What can be known deterministically?"
 
 ---
 
@@ -310,9 +382,16 @@ Extensions don't break compatibility—platforms that don't understand them simp
 
 ## Best Practices
 
+**Designing Skills:**
+- Start with `templates/DESIGN.md` to separate deterministic from natural language
+- Build `scripts/status-check.sh` for all detectable prerequisites
+- Scripts output JSON; prompts interpret the meaning
+- Test status-check.sh edge cases (missing deps, wrong versions, partial installs)
+
 **Writing SKILL.md:**
 - Keep under 500 lines; move details to `references/`
 - Front-load the description with trigger keywords
+- Include interpretation tables for script outputs
 - Include concrete examples with expected output
 
 **Managing MEMO.md:**
