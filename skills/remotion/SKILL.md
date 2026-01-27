@@ -13,6 +13,46 @@ metadata:
 
 Use this skill whenever you are dealing with Remotion code to obtain the domain-specific knowledge.
 
+## Prerequisites
+
+Before starting a new Remotion project, run `scripts/check-prereqs.sh` (in this skill directory).
+
+**Interpreting results:**
+- `"status":"ok"` → proceed
+- `"status":"missing"` or `"status":"outdated"` → help user install/upgrade
+
+**Installation guidance by status:**
+
+| Dependency | If missing/outdated |
+|------------|---------------------|
+| node | Link to https://nodejs.org/ or suggest `nvm install 20` |
+| npm | Comes with Node; if missing, Node install is broken |
+| ffmpeg | macOS: `brew install ffmpeg`. Linux: `apt install ffmpeg`. Windows: https://ffmpeg.org/. Note: Remotion auto-installs if missing during render, so this is soft-fail |
+
+**When to skip checks:**
+- User already has a working Remotion project (check for `package.json` with `remotion` dependency)
+- User explicitly says they have prerequisites
+
+## Quick start commands
+
+```bash
+# New project
+npx create-video@latest my-video
+
+# Add to existing React project
+npm install --save-exact remotion @remotion/cli
+
+# Run studio (dev server)
+npx remotion studio
+
+# Render video
+npx remotion render src/index.ts CompositionId out/video.mp4
+```
+
+## Official docs
+
+For deeper questions beyond this skill's references: https://remotion.dev/docs
+
 ## How to use
 
 Read individual reference files for detailed explanations and code examples:
