@@ -1,41 +1,65 @@
 #!/bin/bash
-# deploy-skill.sh - Build skill for deployment
-# Outputs to .claude/skills/ for local use, or dist/ for external deployment
+# deploy-skill.sh - Deploy skill via symlinks
+# Global: ~/.local/share/skillmonger/skills/ with symlinks to tool locations
+# Local: symlink in project tool directories pointing to source
 set -euo pipefail
+
+SKILLMONGER_DIR="$HOME/.local/share/skillmonger/skills"
+
+# Tool directory mappings
+# Format: tool:global_path:local_path
+TOOL_PATHS=(
+  "claude:$HOME/.claude/skills:.claude/skills"
+  "codex:$HOME/.codex/skills:.codex/skills"
+  "opencode:$HOME/.config/opencode/skills:.opencode/skills"
+)
 
 # Parse arguments
 SKILL_DIR=""
-FORMAT="dir"
-TARGET="local"
+DO_GLOBAL=""
+LOCAL_DIR=""
+TOOLS=""
+FORMAT=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --global)
+      DO_GLOBAL=1
+      shift
+      ;;
+    --local)
+      LOCAL_DIR="$2"
+      shift 2
+      ;;
+    --tools)
+      TOOLS="$2"
+      shift 2
+      ;;
     --format)
       FORMAT="$2"
       shift 2
       ;;
-    --target)
-      TARGET="$2"
-      shift 2
-      ;;
     --help|-h)
-      echo "Usage: deploy-skill.sh <skill-path> [--format dir|zip] [--target local|dist]"
+      echo "Usage: deploy-skill.sh <skill-path> [options]"
       echo ""
       echo "Options:"
-      echo "  --format dir    Output as directory (default)"
-      echo "  --format zip    Output as zip archive"
-      echo "  --target local  Deploy to .claude/skills/ (default)"
-      echo "  --target dist   Deploy to dist/ for external distribution"
+      echo "  --global          Install to ~/.local/share/skillmonger/skills/ and"
+      echo "                    symlink from user-global tool directories"
+      echo "  --local <dir>     Symlink from project tool directories to source skill"
+      echo "  --tools <list>    Comma-separated tools: claude,codex,opencode (default: all)"
+      echo "  --format zip      Also create zip in dist/ for Claude.ai upload"
       echo ""
-      echo "Output:"
-      echo "  .claude/skills/<skill-name>/   Local deployment (Claude Code reads this)"
-      echo "  dist/<skill-name>/             External distribution"
+      echo "At least one of --global or --local must be specified."
       echo ""
-      echo "External deployment targets:"
-      echo "  Claude Code:   ~/.claude/skills/ or .claude/skills/"
-      echo "  Codex:         ~/.codex/skills/ or .codex/skills/"
-      echo "  Antigravity:   ~/.gemini/antigravity/skills/ or .agent/skills/"
-      echo "  Claude.ai:     Upload zip via Settings > Features"
+      echo "Global paths:"
+      echo "  ~/.claude/skills/<name>           (Claude Code)"
+      echo "  ~/.codex/skills/<name>            (Codex)"
+      echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
+      echo ""
+      echo "Local paths:"
+      echo "  <dir>/.claude/skills/<name>       (Claude Code)"
+      echo "  <dir>/.codex/skills/<name>        (Codex)"
+      echo "  <dir>/.opencode/skills/<name>     (OpenCode)"
       exit 0
       ;;
     *)
@@ -46,8 +70,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$SKILL_DIR" ]; then
-  echo "Usage: deploy-skill.sh <skill-path> [--format dir|zip]"
+  echo "Usage: deploy-skill.sh <skill-path> [--global] [--local <dir>] [--tools <list>]"
   echo "Run with --help for more information."
+  exit 1
+fi
+
+if [ -z "$DO_GLOBAL" ] && [ -z "$LOCAL_DIR" ]; then
+  echo "ERROR: Specify --global and/or --local <dir>"
   exit 1
 fi
 
@@ -56,16 +85,13 @@ SKILL_NAME="$(basename "$SKILL_DIR")"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Set output directory based on target
-if [ "$TARGET" = "local" ]; then
-  DIST_DIR="$PROJECT_ROOT/.claude/skills"
-else
-  DIST_DIR="$PROJECT_ROOT/dist"
+# Default to all tools if not specified
+if [ -z "$TOOLS" ]; then
+  TOOLS="claude,codex,opencode"
 fi
 
 echo "Deploying skill: $SKILL_NAME"
-echo "Format: $FORMAT"
-echo "Target: $TARGET ($DIST_DIR)"
+echo "Tools: $TOOLS"
 echo ""
 
 # Run validation first
@@ -77,70 +103,66 @@ if ! "$SCRIPT_DIR/validate-skill.sh" "$SKILL_DIR"; then
 fi
 echo ""
 
-# Create dist directory
-mkdir -p "$DIST_DIR"
+# Helper: check if tool is in the list
+tool_enabled() {
+  [[ ",$TOOLS," == *",$1,"* ]]
+}
 
-# Clean previous build
-rm -rf "${DIST_DIR:?}/$SKILL_NAME" "${DIST_DIR:?}/$SKILL_NAME.zip"
+# Global deployment
+if [ -n "$DO_GLOBAL" ]; then
+  # Install to skillmonger directory
+  mkdir -p "$SKILLMONGER_DIR"
+  rm -rf "${SKILLMONGER_DIR:?}/$SKILL_NAME"
+  cp -r "$SKILL_DIR" "$SKILLMONGER_DIR/$SKILL_NAME"
 
-if [ "$FORMAT" = "dir" ]; then
-  # Copy skill directory to dist
-  echo "Building directory..."
-  cp -r "$SKILL_DIR" "$DIST_DIR/$SKILL_NAME"
+  # Remove .git directories from installed copy
+  find "$SKILLMONGER_DIR/$SKILL_NAME" -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
 
-  # Remove any .git directories
-  find "$DIST_DIR/$SKILL_NAME" -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
+  echo "✓ Installed to $SKILLMONGER_DIR/$SKILL_NAME"
 
-  OUTPUT_PATH="$DIST_DIR/$SKILL_NAME/"
+  # Create symlinks in tool directories
+  for entry in "${TOOL_PATHS[@]}"; do
+    IFS=':' read -r tool global_path local_path <<< "$entry"
+    if tool_enabled "$tool"; then
+      mkdir -p "$global_path"
+      rm -f "$global_path/$SKILL_NAME"
+      ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
+      echo "✓ Symlinked $global_path/$SKILL_NAME"
+    fi
+  done
+fi
+
+# Local deployment
+if [ -n "$LOCAL_DIR" ]; then
+  LOCAL_DIR="$(cd "$LOCAL_DIR" && pwd)"
   echo ""
-  echo "✓ Built: $OUTPUT_PATH"
+  for entry in "${TOOL_PATHS[@]}"; do
+    IFS=':' read -r tool global_path local_path <<< "$entry"
+    if tool_enabled "$tool"; then
+      target_dir="$LOCAL_DIR/$local_path"
+      mkdir -p "$target_dir"
+      rm -f "$target_dir/$SKILL_NAME"
+      ln -s "$SKILL_DIR" "$target_dir/$SKILL_NAME"
+      echo "✓ Symlinked $local_path/$SKILL_NAME -> $SKILL_DIR"
+    fi
+  done
+fi
 
-elif [ "$FORMAT" = "zip" ]; then
-  # Create zip archive
+# Create zip if requested
+if [ "$FORMAT" = "zip" ]; then
+  echo ""
   echo "Building zip archive..."
+  DIST_DIR="$PROJECT_ROOT/dist"
+  mkdir -p "$DIST_DIR"
 
-  # Create temp directory for clean zip
   TEMP_DIR=$(mktemp -d)
   cp -r "$SKILL_DIR" "$TEMP_DIR/$SKILL_NAME"
   find "$TEMP_DIR/$SKILL_NAME" -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
   find "$TEMP_DIR/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
 
-  # Create zip
-  (cd "$TEMP_DIR" && zip -r "$DIST_DIR/$SKILL_NAME.zip" "$SKILL_NAME" -x "*.git*")
-
-  # Cleanup
+  rm -f "$DIST_DIR/$SKILL_NAME.zip"
+  (cd "$TEMP_DIR" && zip -rq "$DIST_DIR/$SKILL_NAME.zip" "$SKILL_NAME" -x "*.git*")
   rm -rf "$TEMP_DIR"
 
-  OUTPUT_PATH="$DIST_DIR/$SKILL_NAME.zip"
-  echo ""
-  echo "✓ Built: $OUTPUT_PATH"
-
-else
-  echo "ERROR: Unknown format '$FORMAT'. Use 'dir' or 'zip'."
-  exit 1
-fi
-
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-if [ "$TARGET" = "local" ]; then
-  echo "✓ Skill deployed to .claude/skills/"
-  echo "  Claude Code will now use this skill in this project."
-else
-  echo "External deployment examples:"
-  echo ""
-  echo "  # Claude Code (user-global)"
-  echo "  cp -r $OUTPUT_PATH ~/.claude/skills/"
-  echo ""
-  echo "  # OpenAI Codex (user-global)"
-  echo "  cp -r $OUTPUT_PATH ~/.codex/skills/"
-  echo ""
-  echo "  # Antigravity (workspace)"
-  echo "  cp -r $OUTPUT_PATH .agent/skills/"
-  echo ""
-  if [ "$FORMAT" = "zip" ]; then
-    echo "  # Claude.ai"
-    echo "  Upload $OUTPUT_PATH via Settings > Features"
-    echo ""
-  fi
+  echo "✓ Built dist/$SKILL_NAME.zip (for Claude.ai upload)"
 fi
