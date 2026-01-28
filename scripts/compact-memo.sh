@@ -52,6 +52,39 @@ if [ -f "$CONFIG_FILE" ] && command -v python3 &> /dev/null; then
   echo ""
 fi
 
+# Display feedback summary if FEEDBACK.jsonl exists
+FEEDBACK_FILE="$SKILL_DIR/FEEDBACK.jsonl"
+if [ -f "$FEEDBACK_FILE" ]; then
+  fb_count=$(wc -l < "$FEEDBACK_FILE" | xargs)
+  echo "=== Feedback Summary ($fb_count entries) ==="
+
+  # Calculate average outcome
+  avg=$(grep -oE '"outcome":[1-5]' "$FEEDBACK_FILE" | grep -oE '[1-5]' | awk '{ sum+=$1; count++ } END { if (count>0) printf "%.1f", sum/count }')
+  if [ -n "$avg" ]; then
+    echo "  Average outcome: $avg / 5.0"
+  fi
+
+  # Source breakdown
+  llm_count=$(grep -c '"source":"llm"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
+  script_count=$(grep -c '"source":"script"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
+  user_count=$(grep -c '"source":"user"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
+  echo "  Sources: llm=$llm_count  script=$script_count  user=$user_count"
+
+  # Show recent low scores (outcome <= 2) as compaction signals
+  low_scores=$(grep -E '"outcome":[12]' "$FEEDBACK_FILE" 2>/dev/null | tail -3)
+  if [ -n "$low_scores" ]; then
+    echo ""
+    echo "  Recent low scores (signals for compaction):"
+    echo "$low_scores" | while IFS= read -r line; do
+      note=$(echo "$line" | grep -oE '"note":"[^"]*"' | sed 's/"note":"//;s/"//')
+      prompt=$(echo "$line" | grep -oE '"prompt":"[^"]*"' | sed 's/"prompt":"//;s/"//' | cut -c1-50)
+      outcome=$(echo "$line" | grep -oE '"outcome":[1-5]' | grep -oE '[1-5]')
+      echo "    [$outcome] $prompt${note:+ - $note}"
+    done
+  fi
+  echo ""
+fi
+
 # Display MEMO.md content for review
 echo "=== Current MEMO.md Content ==="
 echo ""
