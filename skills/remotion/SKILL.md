@@ -87,3 +87,23 @@ Read individual reference files for detailed explanations and code examples:
 - [references/transitions.md](references/transitions.md) - Scene transition patterns for Remotion
 - [references/trimming.md](references/trimming.md) - Trimming patterns for Remotion - cut the beginning or end of animations
 - [references/videos.md](references/videos.md) - Embedding videos in Remotion - trimming, volume, speed, looping, pitch
+
+---
+
+## After Execution
+
+After completing the skill output, log feedback to track quality over time.
+
+**Priority cascade:**
+1. If `scripts/evaluate.sh` exists in this skill directory, run it and use the JSON result
+2. Otherwise, self-assess using the scale below
+
+**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
+
+**To log feedback**, append one JSON line to `FEEDBACK.jsonl` in this skill directory:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"remotion","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+```
+
+Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
