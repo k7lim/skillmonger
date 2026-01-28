@@ -65,6 +65,30 @@ What can go wrong? How should each be handled?
 
 ---
 
+## Feedback Mechanism
+
+How will you know if the skill's output is good? Pick the pattern that fits.
+
+| Pattern | When | Mechanism |
+|---------|------|-----------|
+| Programmatic | Output is verifiable by code | Evaluate script (bash, python, etc.) |
+| Qualitative | Output is subjective (prose, creative) | Ask user a skill-specific question |
+| Delayed | Correctness knowable later | Skip feedback now, log later with `--source user` |
+| Hybrid | Mix of verifiable and subjective | Evaluate script + qualitative ask |
+
+**Which pattern fits this skill?** [ ]
+
+**If programmatic:** What checks would the script run?
+- [ ]
+- [ ]
+
+**If qualitative:** What specific question would you ask the user?
+- [ ]
+
+**What language does the evaluate script need?** Bash is fine for grep-based checks. Python for parsing, API calls, or diffing.
+
+---
+
 ## Status Check Script Design
 
 Based on the above, your `scripts/status-check.sh` should output JSON like:
