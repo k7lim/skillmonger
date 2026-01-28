@@ -194,6 +194,13 @@ else
   echo "  ✓ references/ (empty)"
 fi
 
+# Copy FEEDBACK.jsonl if exists
+if [ -f "$SANDBOX_PATH/FEEDBACK.jsonl" ]; then
+  cp "$SANDBOX_PATH/FEEDBACK.jsonl" "$TARGET_DIR/"
+  fb_count=$(wc -l < "$SANDBOX_PATH/FEEDBACK.jsonl" | xargs)
+  echo "  ✓ FEEDBACK.jsonl ($fb_count entries)"
+fi
+
 # Generate CONFIG.yaml if not exists
 if [ -f "$SANDBOX_PATH/CONFIG.yaml" ]; then
   cp "$SANDBOX_PATH/CONFIG.yaml" "$TARGET_DIR/"
@@ -280,8 +287,8 @@ fi
 
 # --- Check for additional files ---
 
-# Known files we've already handled
-KNOWN_FILES="SKILL.md CONFIG.yaml MEMO.md DESIGN.md README.md"
+# Known files we've already handled (includes sandbox-only files)
+KNOWN_FILES="SKILL.md CONFIG.yaml MEMO.md DESIGN.md README.md BRIEF.md PLAN.md FEEDBACK.jsonl"
 KNOWN_DIRS="scripts references"
 
 # Find extra files

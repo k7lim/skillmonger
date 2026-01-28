@@ -58,11 +58,27 @@ ONE_LINER="${ONE_LINER:-A skill that does something useful.}"
 # --- Generate Files ---
 
 SKILL_DIR="$SANDBOX_SKILLS_DIR/$SKILL_NAME"
+SEED_FILE="$HOME/Development/sandbox/research/skilldev/$SKILL_NAME.md"
 echo ""
 echo "Creating skill stub at $SKILL_DIR/..."
 
 mkdir -p "$SKILL_DIR/scripts"
 mkdir -p "$SKILL_DIR/references"
+
+# Copy seed file as PLAN.md if it exists
+if [ -f "$SEED_FILE" ]; then
+  cp "$SEED_FILE" "$SKILL_DIR/PLAN.md"
+  echo "  ✓ Copied seed notes to PLAN.md"
+fi
+
+# Generate BRIEF.md from template for yolo agent session
+if [ -f "$PROJECT_ROOT/templates/sandbox-brief.md" ]; then
+  sed -e "s|{{SKILL_NAME}}|$SKILL_NAME|g" \
+      -e "s|{{ONE_LINER}}|$ONE_LINER|g" \
+      -e "s|{{SKILL_DIR}}|$SKILL_DIR|g" \
+      "$PROJECT_ROOT/templates/sandbox-brief.md" > "$SKILL_DIR/BRIEF.md"
+  echo "  ✓ Created BRIEF.md (task brief for sandbox agent)"
+fi
 
 # Copy DESIGN.md template
 cp "$PROJECT_ROOT/templates/DESIGN.md" "$SKILL_DIR/DESIGN.md"
@@ -113,6 +129,26 @@ Before proceeding, run \`scripts/status-check.sh\` in this skill directory.
 **User:** "[Example request]"
 
 **Response:** [Example response]
+
+---
+
+## After Execution
+
+After completing the skill output, log feedback to track quality over time.
+
+**Priority cascade:**
+1. If \`scripts/evaluate.sh\` exists in this skill directory, run it and use the JSON result
+2. Otherwise, self-assess using the scale below
+
+**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
+
+**To log feedback**, append one JSON line to \`FEEDBACK.jsonl\` in this skill directory:
+
+\`\`\`json
+{"ts":"<UTC ISO 8601>","skill":"$SKILL_NAME","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+\`\`\`
+
+Then increment \`iteration_count\` under \`compaction\` in \`CONFIG.yaml\`.
 EOF
 echo "  ✓ Created SKILL.md (draft)"
 
@@ -211,6 +247,40 @@ OUTER
 chmod +x "$SKILL_DIR/scripts/status-check.sh"
 echo "  ✓ Created scripts/status-check.sh (template)"
 
+# Generate evaluate.sh template
+cat > "$SKILL_DIR/scripts/evaluate.sh" << 'EVALEOF'
+#!/bin/bash
+# evaluate.sh - Deterministic scoring for skill output
+# Reads skill output from stdin or a file argument.
+# Outputs JSON with outcome (1-5), note, and checks.
+#
+# Usage:
+#   echo "$OUTPUT" | scripts/evaluate.sh
+#   scripts/evaluate.sh output.md
+set -euo pipefail
+
+# Read input from file arg or stdin
+if [ $# -ge 1 ] && [ -f "$1" ]; then
+  INPUT=$(cat "$1")
+else
+  INPUT=$(cat)
+fi
+
+# --- Add your checks here ---
+# Example: count entries, validate structure, check completeness
+
+outcome=4
+note=""
+
+# --- Output JSON ---
+cat << EOF
+{"outcome":$outcome,"note":"$note","checks":{},"source":"script"}
+EOF
+EVALEOF
+
+chmod +x "$SKILL_DIR/scripts/evaluate.sh"
+echo "  ✓ Created scripts/evaluate.sh (template)"
+
 # Create a simple README for the sandbox skill
 cat > "$SKILL_DIR/README.md" << EOF
 # $SKILL_NAME (sandbox draft)
@@ -247,12 +317,18 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Skill scaffold created: $SKILL_DIR"
 echo ""
-echo "Development workflow:"
-echo "  1. cd $SKILL_DIR"
-echo "  2. Fill out DESIGN.md (think deterministic vs NL)"
-echo "  3. Build scripts/status-check.sh for prerequisites"
-echo "  4. Iterate on SKILL.md with yolo agent permissions"
-echo "  5. When stable: ship-skill $SKILL_DIR"
+echo "Next step — launch a yolo agent in the sandbox:"
 echo ""
-echo "The sandbox has yolo permissions - experiment freely!"
+echo "  cd $SKILL_DIR && claude \"Read BRIEF.md and build the skill\""
+echo ""
+if [ -f "$SKILL_DIR/PLAN.md" ]; then
+  echo "PLAN.md has the seed notes. BRIEF.md has the build specs."
+else
+  echo "BRIEF.md has the build specs. Add a PLAN.md for detailed context."
+fi
+echo ""
+echo "When done, ship from the host:"
+echo ""
+echo "  scripts/ship-skill.sh $SKILL_DIR"
+echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
