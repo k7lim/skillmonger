@@ -1,0 +1,42 @@
+skill:
+  name: ai-talking-heads
+  version: 1.0.0
+  created: 2026-01-27
+  updated: 2026-01-27
+  author: kevin
+
+triggers:
+  phrases:
+    - "ai talking head"
+    - "ugc video"
+    - "talking head video"
+    - "longform ai video"
+    - "realistic ai video"
+    - "generate talking head"
+  keywords:
+    - talking-head
+    - ugc
+    - ai-video
+    - kling
+    - veo
+
+dependencies:
+  tools: [Bash]
+  cli: [node, npm, ffmpeg]
+  skills: [remotion]
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
