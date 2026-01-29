@@ -1,7 +1,7 @@
 #!/bin/bash
-# deploy-skill.sh - Deploy skill via symlinks
+# deploy-skill.sh - Deploy skill to tool directories
 # Global: ~/.local/share/skillmonger/skills/ with symlinks to tool locations
-# Local: symlink in project tool directories pointing to source
+# Local: copies skill into project tool directories
 set -euo pipefail
 
 SKILLMONGER_DIR="$HOME/.local/share/skillmonger/skills"
@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --global          Install to ~/.local/share/skillmonger/skills/ and"
       echo "                    symlink from user-global tool directories"
-      echo "  --local <dir>     Symlink from project tool directories to source skill"
+      echo "  --local <dir>     Copy skill into project tool directories"
       echo "  --tools <list>    Comma-separated tools: claude,codex,opencode (default: all)"
       echo "  --format zip      Also create zip in dist/ for Claude.ai upload"
       echo ""
@@ -56,10 +56,10 @@ while [[ $# -gt 0 ]]; do
       echo "  ~/.codex/skills/<name>            (Codex)"
       echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
       echo ""
-      echo "Local paths:"
-      echo "  <dir>/.claude/skills/<name>       (Claude Code)"
-      echo "  <dir>/.codex/skills/<name>        (Codex)"
-      echo "  <dir>/.opencode/skills/<name>     (OpenCode)"
+      echo "Local paths (copied):"
+      echo "  <dir>/.claude/skills/<name>/      (Claude Code)"
+      echo "  <dir>/.codex/skills/<name>/       (Codex)"
+      echo "  <dir>/.opencode/skills/<name>/    (OpenCode)"
       exit 0
       ;;
     *)
@@ -108,6 +108,59 @@ tool_enabled() {
   [[ ",$TOOLS," == *",$1,"* ]]
 }
 
+# Check skill dependencies
+CONFIG_FILE="$SKILL_DIR/CONFIG.yaml"
+if [ -f "$CONFIG_FILE" ]; then
+  # Extract dependencies.skills list from CONFIG.yaml
+  DEP_SKILLS=$(grep -A 50 '^dependencies:' "$CONFIG_FILE" 2>/dev/null \
+    | grep '^\s*skills:' \
+    | sed 's/.*\[//;s/\].*//' \
+    | tr ',' '\n' \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | grep -v '^$') || true
+
+  if [ -n "$DEP_SKILLS" ]; then
+    MISSING_DEPS=()
+    while IFS= read -r dep; do
+      found=0
+      if [ -n "$DO_GLOBAL" ] && [ -d "$SKILLMONGER_DIR/$dep" ]; then
+        found=1
+      fi
+      if [ -n "$LOCAL_DIR" ] && [ -n "$LOCAL_DIR" ]; then
+        for entry in "${TOOL_PATHS[@]}"; do
+          IFS=':' read -r tool global_path local_path <<< "$entry"
+          if tool_enabled "$tool"; then
+            if [ -n "$DO_GLOBAL" ] && [ -L "$global_path/$dep" -o -d "$global_path/$dep" ]; then
+              found=1
+            fi
+            if [ -n "$LOCAL_DIR" ] && [ -d "$LOCAL_DIR/$local_path/$dep" ]; then
+              found=1
+            fi
+          fi
+        done
+      elif [ -n "$DO_GLOBAL" ]; then
+        for entry in "${TOOL_PATHS[@]}"; do
+          IFS=':' read -r tool global_path local_path <<< "$entry"
+          if tool_enabled "$tool" && [ -L "$global_path/$dep" -o -d "$global_path/$dep" ]; then
+            found=1
+          fi
+        done
+      fi
+      if [ "$found" -eq 0 ]; then
+        MISSING_DEPS+=("$dep")
+      fi
+    done <<< "$DEP_SKILLS"
+
+    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+      for dep in "${MISSING_DEPS[@]}"; do
+        echo "⚠ Dependency '$dep' is not deployed"
+        echo "  Deploy it with: scripts/deploy-skill.sh skills/$dep${DO_GLOBAL:+ --global}${LOCAL_DIR:+ --local $LOCAL_DIR}"
+      done
+      echo ""
+    fi
+  fi
+fi
+
 # Global deployment
 if [ -n "$DO_GLOBAL" ]; then
   # Install to skillmonger directory
@@ -132,7 +185,7 @@ if [ -n "$DO_GLOBAL" ]; then
   done
 fi
 
-# Local deployment
+# Local deployment (copy)
 if [ -n "$LOCAL_DIR" ]; then
   LOCAL_DIR="$(cd "$LOCAL_DIR" && pwd)"
   echo ""
@@ -141,9 +194,11 @@ if [ -n "$LOCAL_DIR" ]; then
     if tool_enabled "$tool"; then
       target_dir="$LOCAL_DIR/$local_path"
       mkdir -p "$target_dir"
-      rm -f "$target_dir/$SKILL_NAME"
-      ln -s "$SKILL_DIR" "$target_dir/$SKILL_NAME"
-      echo "✓ Symlinked $local_path/$SKILL_NAME -> $SKILL_DIR"
+      rm -rf "$target_dir/$SKILL_NAME"
+      cp -r "$SKILL_DIR" "$target_dir/$SKILL_NAME"
+      find "$target_dir/$SKILL_NAME" -name ".git" -type d -exec rm -rf {} + 2>/dev/null || true
+      find "$target_dir/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
+      echo "✓ Copied to $local_path/$SKILL_NAME"
     fi
   done
 fi
