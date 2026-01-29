@@ -82,11 +82,37 @@ Duration: 10 seconds.
 | `{ACTION_START}` | Subject looks at camera with slight head tilt, Subject pauses then begins speaking |
 | `{OPENING_GESTURE}` | right hand adjusts hair, slight shoulder shrug |
 | `{ACTION_MIDDLE}` | Leans forward slightly, Straightens posture |
-| `{HAND_GESTURE}` | Open palm gesture toward camera, Counting on fingers |
+| `{HAND_GESTURE}` | Open palm gesture toward camera, Gentle emphatic gesture, Hand moves to illustrate point |
 | `{MICRO_EXPRESSION}` | Eyebrows raise briefly, Corner of mouth quirks up |
 | `{ACTION_END}` | Leans back in chair, Nods slowly |
 | `{CLOSING_GESTURE}` | Hands return to resting position, Touches chin thoughtfully |
 | `{CLOSING_EXPRESSION}` | Relaxed confidence, Thoughtful pause |
+
+## Required: Explicit Lip Movement Cues
+
+Kling will NOT generate lip movement unless you explicitly request it. **Always include:**
+
+- In the intro: "Mouth moves naturally as she talks throughout"
+- In each time block: "Lips move as she speaks" or "talking naturally"
+- For the final beat: "Lips still moving as she finishes"
+
+**Phrases that STOP lip movement (avoid these):**
+- "closed-lip smile" — tells Kling to keep mouth shut
+- "holds the pose" / "still" — freezes all motion including lips
+- "knowing smile" without speaking cue — defaults to closed mouth
+
+## Gestures to Avoid
+
+AI video generators are unreliable with specific hand poses. **Do not use:**
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| "holds up three fingers" | Wrong finger count | "emphatic hand gesture" |
+| "counting on fingers" | Random finger movements | "illustrative gesture" |
+| "thumbs up" / "peace sign" | Often distorted | "positive expression, slight nod" |
+| "points at specific object" | Pointing direction wrong | "gestures toward camera" |
+
+Keep gestures vague and emotional rather than specific and script-tied.
 
 ## Modification Guide
 

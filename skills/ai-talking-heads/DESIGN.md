@@ -70,6 +70,24 @@ What needs to be true before this skill can work?
 
 ---
 
+## Feedback Mechanism
+
+**Pattern:** Hybrid — evaluate.sh handles structural checks, but prompt quality and video output are subjective.
+
+**Programmatic checks** (evaluate.sh):
+- Chunk structure present (chunks array, syllable counts)
+- Syllable ranges within 45-65 tolerance
+- Image prompts include realism markers (skin pores, natural lighting, mobile camera specs)
+- Video prompts include timestamped action clusters
+- Post-production plan references remotion
+
+**Qualitative question** (ask user on 1st run and every 3rd run):
+- "Did the generated clips match your character consistently? Would you use these prompts as-is?"
+
+**Language note:** Bash is adequate for grep-based structural checks. `count-syllables.sh` could benefit from Python (syllapy library) for accuracy, but bash is acceptable with the documented +/-5 tolerance.
+
+---
+
 ## Status Check Script Design
 
 `scripts/check-prereqs.sh` outputs:
@@ -118,3 +136,4 @@ What needs to be true before this skill can work?
 - [x] Reference files cover all workflow phases
 - [x] Cross-skill dependency (remotion) is documented in CONFIG.yaml
 - [x] Tested in sandbox with edge cases
+- [x] Language choice: bash for all scripts; count-syllables.sh could be Python (syllapy) but bash is sufficient with documented +/-5 tolerance

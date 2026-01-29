@@ -153,12 +153,13 @@ For each chunk, construct a video prompt using `references/prompt-templates.md`.
 
 1. **Reference image** attachment (the base character from Phase 2)
 2. **Subject description** matching the base image
-3. **Script text** for that chunk
-4. **Tone** matching the script
-5. **Timestamped action clusters** -- 3 time blocks describing body language:
+3. **Tone** matching the script (do NOT include the actual script text -- it can trigger content filters)
+4. **Timestamped action clusters** -- 3 time blocks describing body language:
    - `[0-3s]` Opening pose and initial gesture
    - `[3-6s]` Emphasis gesture at the key point
    - `[6-10s]` Settling gesture, transition-ready pose
+
+**Avoid specific gestures:** Do NOT prompt for "holds up three fingers" or "counting on fingers" -- AI video generators produce wrong finger counts. Use vague descriptions like "emphatic hand gesture" instead. See `references/prompt-templates.md` for safe gesture alternatives.
 
 **Clip boundary continuity:** End each clip with a neutral/settled pose that the next clip can start from. See `references/video-generation.md` for continuity techniques.
 
@@ -185,6 +186,18 @@ ffmpeg -i voice.wav -af loudnorm=I=-16:TP=-1.5:LRA=11 voice_normalized.wav
 ```
 
 **Reference:** [references/video-generation.md](references/video-generation.md) for tool comparison, action clusters, and the InfiniteTalk alternative. [references/audio-cleanup.md](references/audio-cleanup.md) for audio processing.
+
+### Step 5: Lip Sync (Optional but Recommended)
+
+**Important:** Kling/Veo image-to-video does NOT sync lip movement to external audio. The generated video has generic "talking" mouth motion that won't match your audio track.
+
+For professional results, run clips through a lip sync tool:
+
+1. **Wav2Lip** (recommended) -- Open-source, can run locally or via Replicate API
+2. **SadTalker** -- Alternative with better head motion
+3. **Skip this step** if using captions that draw attention away from lips, or for rough cuts
+
+See `references/video-generation.md` for detailed lip sync workflow.
 
 ## Workflow Phase 4: Post-Production
 
@@ -243,18 +256,40 @@ Guide the user to assemble manually:
 
 ## After Execution
 
-After completing the skill output, log feedback to track quality over time.
+After completing the skill output, score and log feedback using the hybrid pattern: structural evaluation + qualitative check.
 
-**Priority cascade:**
-1. If `scripts/evaluate.sh` exists in this skill directory, run it and use the JSON result
-2. Otherwise, self-assess using the scale below
+### Step 1: Structural Score
 
-**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
+Run `scripts/evaluate.sh` — pipe the full skill output to it:
 
-**To log feedback**, append one JSON line to `FEEDBACK.jsonl` in this skill directory:
-
-```json
-{"ts":"<UTC ISO 8601>","skill":"ai-talking-heads","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+```bash
+echo "$OUTPUT" | scripts/evaluate.sh
 ```
 
-Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
+The script checks chunk structure, syllable ranges, image/video prompt markers, and post-production references. Use the JSON result for the structural score.
+
+### Step 2: Qualitative Score
+
+**On the first run and every 3rd run thereafter**, ask the user:
+
+> "Did the generated clips match your character consistently? Would you use these prompts without major edits?"
+
+Map the response: yes = 5, mostly = 4, some issues = 3, no = 2.
+
+**On other runs**, self-assess against these criteria: chunks in expected range, prompts include realism markers and action clusters, post-production plan references remotion. Use the same 1-5 scale.
+
+### Step 3: Log Feedback
+
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"ai-talking-heads","version":"<from CONFIG.yaml>","prompt":"<user's original request>","structural":<1-5>,"qualitative":<1-5>,"outcome":<average, rounded>,"note":"<brief note if not 4>","source":"user","schema_version":1}
+```
+
+Set `"source":"user"` when the qualitative score came from the user, or `"source":"llm"` when self-assessed.
+
+**Alternative:** Run `log-feedback.sh` from the project root to log feedback interactively.
+
+### Step 4: Increment Iteration Count
+
+Increment `iteration_count` under `compaction` in `CONFIG.yaml`.

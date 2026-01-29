@@ -12,10 +12,12 @@ tags: video-gen, kling, veo, motion, clips, talking-head
 |---------|-----------|---------|
 | Max clip length | 10s | 8s |
 | Reference frame support | Yes (image-to-video) | Yes |
-| Lip sync quality | Good with clear prompts | Better natural motion |
+| Lip movement | Generic mouth motion (not synced to audio) | Generic mouth motion (not synced to audio) |
 | Availability | klingai.com / API | Google DeepMind / API |
 | Cost | Mid-range | Higher |
 | Best for | Consistent character, longer clips | Natural body language |
+
+**Important:** Neither tool syncs lip movement to external audio. See "Lip Sync Post-Processing" below.
 
 **Default recommendation:** Kling 2.6 for most talking-head projects (10s clips align with syllable chunks). Switch to Veo if the user needs superior body language or has access.
 
@@ -87,6 +89,58 @@ For projects requiring seamless multi-minute video without clip boundaries, Infi
 - **Cons:** Less control over body language, limited availability, audio must be pre-recorded
 - **When to use:** If the user has final audio already and wants fastest path to video
 
+## Lip Sync Post-Processing
+
+**The problem:** Image-to-video tools generate generic "talking" mouth movements that are NOT synced to your audio. The subject may appear silent or have mismatched lip movement.
+
+**Getting lip movement at all:** Kling won't always generate lip movement. You MUST include explicit cues:
+- "Mouth moves naturally as she talks throughout"
+- "Lips move as she speaks" in each time block
+- **AVOID** phrases like "closed-lip smile", "holds the pose", or "still" which tell Kling to freeze the mouth
+
+**Solutions for syncing to audio (in order of quality):**
+
+1. **Wav2Lip** (recommended) -- Open-source lip sync that takes video + audio and generates matching lip movement
+   - GitHub: `Rudrabha/Wav2Lip`
+   - Can be run locally or via Replicate API
+   - Best quality for talking heads
+
+2. **SadTalker** -- Generates head motion + lip sync from audio + single image
+   - Alternative if Wav2Lip produces artifacts
+   - Better head motion, sometimes less precise lips
+
+3. **Hedra / HeyGen** -- Commercial services with built-in lip sync
+   - Higher cost but turnkey solution
+   - Good for production workflows
+
+4. **Accept generic motion** -- For some UGC content, slightly mismatched lips are acceptable
+   - Works better with fast cuts and captions that draw attention away from lips
+
+**Recommended workflow:** Generate all clips with Kling/Veo first, then batch-process through Wav2Lip with the corresponding audio chunks before assembly.
+
+## Known Limitations
+
+### Finger Counting is Unreliable
+
+AI video generators consistently fail at specific hand poses:
+
+| Prompt | Typical Result |
+|--------|---------------|
+| "holds up three fingers" | Wrong number of fingers, or hand in wrong position |
+| "counting on fingers" | Random finger movements, not matching any count |
+| "peace sign" / "thumbs up" | Sometimes works, often distorted |
+
+**Recommendation:** Avoid specific finger counts in prompts. Use vague gesture descriptions instead:
+- "emphatic hand gesture" instead of "holds up three fingers"
+- "illustrative gesture" instead of "counting on fingers"
+- "open palm toward camera" (more reliable than specific poses)
+
+### Gesture Timing Won't Match Script
+
+The video generator doesn't understand your script content. If your script says "there are THREE reasons" and you prompt "holds up three fingers at 3 seconds," the timing will likely be wrong.
+
+**Recommendation:** Keep gestures generic and focus on emotional tone rather than script-specific actions.
+
 ## Common Mistakes
 
 | Mistake | Why it fails | Fix |
@@ -96,3 +150,5 @@ For projects requiring seamless multi-minute video without clip boundaries, Infi
 | Overly dramatic actions | Looks unnatural | Use subtle/slight modifiers |
 | Ignoring clip boundaries | Jump cuts are jarring | Plan pose continuity or use transitions |
 | Generating at wrong aspect ratio | Cropping ruins framing | Specify 9:16 vertical in prompt |
+| Specific finger counts in prompts | Wrong number of fingers | Use vague gesture descriptions |
+| Expecting lip sync to audio | Lips don't match external audio | Add Wav2Lip post-processing step |
