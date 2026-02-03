@@ -1,0 +1,45 @@
+# Scientific Paper Searcher Configuration
+
+skill:
+  name: scientific-paper-searcher
+  version: 1.0.0
+  created: 2026-01-29
+  updated: 2026-01-29
+  author: kevin
+
+triggers:
+  phrases:
+    - "find papers on"
+    - "search for scientific papers"
+    - "find research about"
+    - "what papers exist on"
+    - "search pubmed for"
+    - "search arxiv for"
+  keywords:
+    - scientific papers
+    - research papers
+    - literature search
+    - pubmed
+    - arxiv
+
+dependencies:
+  tools:
+    - WebFetch
+    - WebSearch
+  cli:
+    - curl
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  references:
+    - references/search_strategies.md
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
+
+budget:
+  skill_max: 2000
+  memo_max: 1000
+  reference_max: 1000

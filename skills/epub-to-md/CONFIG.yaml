@@ -1,0 +1,7 @@
+version: "0.1.0"
+compaction:
+  iteration_count: 0
+  last_compacted: null
+settings:
+  default_merge: false
+  default_localize: false

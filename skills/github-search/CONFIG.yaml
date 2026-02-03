@@ -1,0 +1,51 @@
+# GitHub Search Skill Configuration
+
+skill:
+  name: github-search
+  version: 1.0.0
+  created: 2026-01-28
+  updated: 2026-01-28
+  author: kevin
+
+triggers:
+  phrases:
+    - "find existing projects"
+    - "search github for"
+    - "build or borrow"
+    - "build or buy"
+    - "is there a library for"
+    - "existing solutions for"
+    - "similar projects on github"
+    - "github alternatives"
+    - "find repos for"
+  keywords:
+    - github search
+    - existing project
+    - build vs borrow
+    - library search
+    - repo search
+    - open source alternatives
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - gh
+  permissions:
+    - Bash
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 3000
+  memo_max: 2000

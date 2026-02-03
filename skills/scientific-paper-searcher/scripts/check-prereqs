@@ -1,0 +1,59 @@
+#!/bin/bash
+# check-prereqs - Verify prerequisites for scientific-paper-searcher skill
+# Outputs JSON for agent consumption. Exit 0 always - readiness is in the JSON.
+set -uo pipefail
+
+checks=()
+all_ok=true
+
+# Check if curl is installed
+check_curl() {
+  local name="curl"
+
+  if ! command -v curl &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\"}")
+    all_ok=false
+    return
+  fi
+
+  local version
+  version=$(curl --version 2>&1 | head -1 | awk '{print $2}' || echo "unknown")
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+}
+
+# Check internet connectivity by pinging a reliable endpoint
+check_internet() {
+  local name="internet"
+
+  # Try to reach PubMed with a short timeout
+  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://pubmed.ncbi.nlm.nih.gov" 2>/dev/null | grep -q "200\|301\|302"; then
+    checks+=("{\"name\":\"$name\",\"status\":\"ok\"}")
+  else
+    checks+=("{\"name\":\"$name\",\"status\":\"unreachable\",\"note\":\"Could not reach pubmed.ncbi.nlm.nih.gov\"}")
+    all_ok=false
+  fi
+}
+
+# Run all checks
+check_curl
+check_internet
+
+# Build checks array JSON
+checks_json=""
+for i in "${!checks[@]}"; do
+  if [ $i -gt 0 ]; then
+    checks_json+=","
+  fi
+  checks_json+="${checks[$i]}"
+done
+
+# Output JSON result
+cat << EOF
+{
+  "ready": $all_ok,
+  "checks": [$checks_json],
+  "context": {
+    "available_databases": ["pubmed", "arxiv", "biorxiv", "medrxiv", "semantic_scholar"]
+  }
+}
+EOF

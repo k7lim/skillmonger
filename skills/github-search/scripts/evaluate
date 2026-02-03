@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""
+evaluate - Score github-search output based on search quality metrics.
+
+Reads search results JSON from stdin or file argument.
+Expected input: JSON array of repos with fields like:
+  {name, stargazersCount, updatedAt, openIssues}
+
+Scoring:
+  - repos_found: Did we find anything?
+  - total_stars: Aggregate quality signal
+  - abandonware: Stale + ignored issues (penalized)
+  - stable: Old but maintained/complete (not penalized)
+
+Output: JSON with outcome (1-5), note, checks, source
+"""
+import sys
+import json
+from datetime import datetime, timezone
+
+def parse_input(text):
+    """Parse input - handles array or object with repos field."""
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            # Try common field names
+            for key in ['repos', 'results', 'items']:
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+            # If it's a single repo object, wrap it
+            if 'name' in data:
+                return [data]
+        return []
+    except json.JSONDecodeError:
+        return []
+
+def parse_date(date_str):
+    """Parse ISO 8601 date string to datetime."""
+    if not date_str:
+        return None
+    try:
+        # Handle various ISO formats
+        date_str = date_str.replace('Z', '+00:00')
+        return datetime.fromisoformat(date_str)
+    except (ValueError, TypeError):
+        return None
+
+def is_stale(updated_at, threshold_days=365):
+    """Check if repo hasn't been updated in threshold_days."""
+    if not updated_at:
+        return None  # Unknown
+    now = datetime.now(timezone.utc)
+    age_days = (now - updated_at).days
+    return age_days > threshold_days
+
+def is_abandonware(repo):
+    """
+    Detect abandonware: stale + ignored issues.
+
+    Abandonware = old AND has significant unaddressed issues.
+    Stable = old but few/no open issues (mature, complete).
+    """
+    # Get update date
+    date_str = repo.get("updatedAt") or repo.get("pushedAt")
+    updated_at = parse_date(date_str)
+
+    # Get open issues
+    open_issues = repo.get("openIssues", repo.get("open_issues", 0)) or 0
+    stars = repo.get("stargazersCount", repo.get("stars", 0)) or 0
+
+    # If we can't determine staleness, can't call it abandonware
+    stale = is_stale(updated_at)
+    if stale is None or not stale:
+        return False, None
+
+    # Stale repo - check if abandonware or just stable
+    # Abandonware indicators:
+    # - High absolute open issues (>30)
+    # - High issue-to-star ratio (>10% for popular repos)
+
+    if open_issues > 50:
+        return True, f"stale with {open_issues} open issues"
+
+    if open_issues > 30:
+        return True, f"stale with {open_issues} ignored issues"
+
+    # For repos with decent stars, check ratio
+    if stars > 100 and open_issues > 0:
+        ratio = open_issues / stars
+        if ratio > 0.1:  # More than 10% of stars as open issues
+            return True, f"stale, issue/star ratio {ratio:.1%}"
+
+    # Stale but not abandonware - probably stable
+    return False, None
+
+def evaluate(repos):
+    """Evaluate search results and return score with checks."""
+    checks = {
+        "repos_found": 0,
+        "total_stars": 0,
+        "has_popular": False,  # At least one repo with 100+ stars
+        "abandonware_count": 0,
+        "healthy_count": 0,  # Popular and not abandonware
+    }
+
+    if not repos:
+        return {
+            "outcome": 1,
+            "note": "No repos found - search returned empty results",
+            "checks": checks,
+            "source": "script"
+        }
+
+    # Analyze repos
+    checks["repos_found"] = len(repos)
+    abandonware_notes = []
+
+    for repo in repos:
+        stars = repo.get("stargazersCount", repo.get("stars", 0)) or 0
+        checks["total_stars"] += stars
+
+        is_popular = stars >= 100
+        if is_popular:
+            checks["has_popular"] = True
+
+        # Check for abandonware
+        abandoned, reason = is_abandonware(repo)
+        if abandoned:
+            checks["abandonware_count"] += 1
+            name = repo.get("name", "unknown")
+            abandonware_notes.append(f"{name}: {reason}")
+        elif is_popular:
+            checks["healthy_count"] += 1
+
+    # Scoring logic
+    outcome = 3  # Start at acceptable
+    notes = []
+
+    # Repos found scoring
+    if checks["repos_found"] == 0:
+        outcome = 1
+        notes.append("no repos found")
+    elif checks["repos_found"] == 1:
+        outcome = max(1, outcome - 1)
+        notes.append("only 1 repo found")
+    elif checks["repos_found"] >= 3:
+        outcome = min(5, outcome + 1)
+
+    # Stars scoring
+    if checks["total_stars"] == 0:
+        outcome = max(1, outcome - 1)
+        notes.append("zero total stars")
+    elif checks["total_stars"] < 50:
+        notes.append(f"low total stars ({checks['total_stars']})")
+    elif checks["total_stars"] >= 1000:
+        outcome = min(5, outcome + 1)
+
+    # Popular repo bonus
+    if checks["has_popular"]:
+        outcome = min(5, outcome + 1)
+    elif checks["repos_found"] > 0:
+        notes.append("no repos with 100+ stars")
+
+    # Abandonware penalty
+    if checks["abandonware_count"] > 0:
+        # Penalize if abandonware is significant portion of results
+        abandon_ratio = checks["abandonware_count"] / checks["repos_found"]
+        if abandon_ratio >= 0.5:
+            outcome = max(1, outcome - 2)
+            notes.append(f"{checks['abandonware_count']} abandonware repos")
+        elif checks["abandonware_count"] >= 2:
+            outcome = max(1, outcome - 1)
+            notes.append(f"{checks['abandonware_count']} abandonware")
+
+    # Healthy repos bonus (popular + not abandoned)
+    if checks["healthy_count"] >= 2:
+        outcome = min(5, outcome + 1)
+
+    # Cap outcome
+    outcome = max(1, min(5, outcome))
+
+    note = "; ".join(notes) if notes else ""
+
+    return {
+        "outcome": outcome,
+        "note": note,
+        "checks": checks,
+        "source": "script"
+    }
+
+def main():
+    # Read input from file arg or stdin
+    if len(sys.argv) > 1:
+        try:
+            with open(sys.argv[1], 'r') as f:
+                text = f.read()
+        except FileNotFoundError:
+            print(json.dumps({
+                "outcome": 1,
+                "note": f"File not found: {sys.argv[1]}",
+                "checks": {},
+                "source": "script"
+            }))
+            return
+    else:
+        text = sys.stdin.read()
+
+    repos = parse_input(text)
+    result = evaluate(repos)
+    print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()

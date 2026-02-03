@@ -1,0 +1,110 @@
+#!/bin/bash
+# check-prereqs - Verify prerequisites for github-search skill
+# Outputs JSON for agent consumption. Exit 0 always - readiness is in the JSON.
+set -uo pipefail
+
+checks=()
+all_ok=true
+context_username=""
+context_rate_limit=""
+
+# --- Check functions ---
+
+check_gh_cli() {
+  local name="gh-cli"
+
+  if ! command -v gh &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"GitHub CLI not installed\"}")
+    all_ok=false
+    return
+  fi
+
+  local version
+  version=$(gh --version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+}
+
+check_gh_auth() {
+  local name="gh-auth"
+
+  if ! command -v gh &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"Cannot check auth - gh not installed\"}")
+    all_ok=false
+    return
+  fi
+
+  # Check authentication status
+  local auth_output
+  if ! auth_output=$(gh auth status 2>&1); then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"Not authenticated. Run: gh auth login\"}")
+    all_ok=false
+    return
+  fi
+
+  # Extract username
+  context_username=$(echo "$auth_output" | grep -oE 'Logged in to github.com account [^ ]+' | sed 's/.*account //' || echo "")
+  if [ -z "$context_username" ]; then
+    context_username=$(echo "$auth_output" | grep -oE 'account [^ ]+' | head -1 | sed 's/account //' || echo "unknown")
+  fi
+
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"note\":\"Authenticated as $context_username\"}")
+}
+
+check_api_access() {
+  local name="api-access"
+
+  if ! command -v gh &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"Cannot check API - gh not installed\"}")
+    all_ok=false
+    return
+  fi
+
+  # Try to hit rate limit endpoint to verify API access
+  local rate_output
+  if ! rate_output=$(gh api /rate_limit 2>&1); then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"Cannot access GitHub API. Check network/auth.\"}")
+    all_ok=false
+    return
+  fi
+
+  # Extract remaining rate limit for search
+  context_rate_limit=$(echo "$rate_output" | grep -A5 '"search"' | grep '"remaining"' | grep -oE '[0-9]+' | head -1 || echo "")
+
+  if [ -n "$context_rate_limit" ] && [ "$context_rate_limit" -lt 5 ]; then
+    checks+=("{\"name\":\"$name\",\"status\":\"outdated\",\"note\":\"Search rate limit low: $context_rate_limit remaining\"}")
+    # Don't fail - can still proceed with caution
+  else
+    checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"note\":\"API accessible\"}")
+  fi
+}
+
+# --- Run checks ---
+check_gh_cli
+check_gh_auth
+check_api_access
+
+# --- Output JSON ---
+
+# Build checks array
+checks_json=""
+for i in "${!checks[@]}"; do
+  if [ $i -gt 0 ]; then
+    checks_json+=","
+  fi
+  checks_json+="${checks[$i]}"
+done
+
+# Build context
+context_json="\"username\":\"$context_username\""
+if [ -n "$context_rate_limit" ]; then
+  context_json+=",\"search_rate_limit_remaining\":$context_rate_limit"
+fi
+
+# Output
+cat << EOF
+{
+  "ready": $all_ok,
+  "checks": [$checks_json],
+  "context": {$context_json}
+}
+EOF
