@@ -4,8 +4,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SANDBOX_SKILLS_DIR="$HOME/Development/sandbox/projects/skills"
+SANDBOX_ROOT="${SANDBOX_ROOT:-$HOME/Development/sandbox}"
+SANDBOX_SKILLS_DIR="$SANDBOX_ROOT/skills"
+SEEDS_DIR="$PROJECT_ROOT/seeds"
 TODAY=$(date +%Y-%m-%d)
+
+# Portable sed in-place edit (BSD vs GNU)
+sed_i() {
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
 
 echo "Creating skill scaffold in sandbox..."
 echo "Location: $SANDBOX_SKILLS_DIR/"
@@ -58,7 +69,7 @@ ONE_LINER="${ONE_LINER:-A skill that does something useful.}"
 # --- Generate Files ---
 
 SKILL_DIR="$SANDBOX_SKILLS_DIR/$SKILL_NAME"
-SEED_FILE="$HOME/Development/sandbox/research/skilldev/$SKILL_NAME.md"
+SEED_FILE="$SEEDS_DIR/$SKILL_NAME.md"
 echo ""
 echo "Creating skill stub at $SKILL_DIR/..."
 
@@ -82,9 +93,9 @@ fi
 
 # Copy DESIGN.md template
 cp "$PROJECT_ROOT/templates/DESIGN.md" "$SKILL_DIR/DESIGN.md"
-# Fill in the name and one-liner
-sed -i '' "s/\[skill-name\]/$SKILL_NAME/g" "$SKILL_DIR/DESIGN.md"
-sed -i '' "s/\[What does this skill do\?\]/$ONE_LINER/g" "$SKILL_DIR/DESIGN.md"
+# Fill in the name and one-liner (using | delimiter to handle / in values)
+sed_i "s|\[skill-name\]|$SKILL_NAME|g" "$SKILL_DIR/DESIGN.md"
+sed_i "s|\[What does this skill do\?\]|$ONE_LINER|g" "$SKILL_DIR/DESIGN.md"
 echo "  ✓ Created DESIGN.md (fill this out first!)"
 
 # Generate minimal SKILL.md
@@ -104,7 +115,7 @@ description: $ONE_LINER
 
 ## Prerequisites
 
-Before proceeding, run \`scripts/status-check.sh\` in this skill directory.
+Before proceeding, run \`scripts/check-prereqs.sh\` in this skill directory.
 
 **Interpreting results:**
 - \`"ready": true\` → proceed with workflow
@@ -152,10 +163,39 @@ Then increment \`iteration_count\` under \`compaction\` in \`CONFIG.yaml\`.
 EOF
 echo "  ✓ Created SKILL.md (draft)"
 
-# Generate status-check.sh template
-cat > "$SKILL_DIR/scripts/status-check.sh" << 'EOF'
+# Generate CONFIG.yaml with placeholder triggers
+cat > "$SKILL_DIR/CONFIG.yaml" << EOF
+# Configuration for $SKILL_NAME
+
+skill:
+  name: $SKILL_NAME
+  version: 0.1.0
+  created: $TODAY
+  updated: $TODAY
+
+triggers:
+  # REQUIRED: Natural language phrases that should invoke this skill (5-10)
+  # Examples: "download video", "search github for", "find papers about"
+  phrases:
+    - "TODO: add trigger phrase"
+  # REQUIRED: Semantic keywords for matching (3-5)
+  keywords:
+    - TODO
+
+dependencies:
+  tools: []
+  cli: []
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
+EOF
+echo "  ✓ Created CONFIG.yaml (fill in triggers!)"
+
+# Generate check-prereqs.sh template
+cat > "$SKILL_DIR/scripts/check-prereqs.sh" << 'EOF'
 #!/bin/bash
-# status-check.sh - Verify prerequisites for this skill
+# check-prereqs.sh - Verify prerequisites for this skill
 # Outputs JSON for agent consumption
 set -euo pipefail
 
@@ -190,9 +230,9 @@ echo "}"
 EOF
 
 # Fix the ready placeholder logic with a proper script
-cat > "$SKILL_DIR/scripts/status-check.sh" << 'OUTER'
+cat > "$SKILL_DIR/scripts/check-prereqs.sh" << 'OUTER'
 #!/bin/bash
-# status-check.sh - Verify prerequisites for this skill
+# check-prereqs.sh - Verify prerequisites for this skill
 # Outputs JSON for agent consumption
 set -euo pipefail
 
@@ -244,8 +284,8 @@ cat << EOF
 EOF
 OUTER
 
-chmod +x "$SKILL_DIR/scripts/status-check.sh"
-echo "  ✓ Created scripts/status-check.sh (template)"
+chmod +x "$SKILL_DIR/scripts/check-prereqs.sh"
+echo "  ✓ Created scripts/check-prereqs.sh (template)"
 
 # Generate evaluate.sh template
 cat > "$SKILL_DIR/scripts/evaluate.sh" << 'EVALEOF'
@@ -290,26 +330,38 @@ Created: $TODAY
 ## Development Workflow
 
 1. **Fill out DESIGN.md** - Think through deterministic vs natural language
-2. **Build status-check.sh** - Add checks for all detectable prerequisites
+2. **Build check-prereqs.sh** - Add checks for all detectable prerequisites
 3. **Iterate on SKILL.md** - Test with yolo permissions in sandbox
 4. **Ship to skillmonger** when stable:
    \`\`\`bash
-   ship-skill ~/Development/sandbox/projects/skills/$SKILL_NAME
+   ship-skill $SKILL_DIR
    \`\`\`
 
 ## Testing
 
 \`\`\`bash
 # Test your status check
-./scripts/status-check.sh | jq .
+./scripts/check-prereqs.sh | jq .
 
 # Test the skill with an agent (in sandbox with yolo)
-cd ~/Development/sandbox/projects/skills/$SKILL_NAME
+cd $SKILL_DIR
 claude  # or your preferred agent
 \`\`\`
 EOF
 echo "  ✓ Created README.md"
 echo "  ✓ Created references/ (empty)"
+
+# --- Write State ---
+
+STATE_FILE="$HOME/.skillmonger-state"
+cat > "$STATE_FILE" << EOF
+SKILL_NAME="$SKILL_NAME"
+SKILL_DIR="$SKILL_DIR"
+LAST_ACTION="scaffolded"
+TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
+NEXT_STEP="cd $SKILL_DIR && claude \"Read BRIEF.md and build the skill\""
+AFTER_THAT="scripts/ship-skill.sh $SKILL_DIR"
+EOF
 
 # --- Summary ---
 
@@ -324,7 +376,8 @@ echo ""
 if [ -f "$SKILL_DIR/PLAN.md" ]; then
   echo "PLAN.md has the seed notes. BRIEF.md has the build specs."
 else
-  echo "BRIEF.md has the build specs. Add a PLAN.md for detailed context."
+  echo "BRIEF.md has the build specs."
+  echo "Tip: Create seeds/$SKILL_NAME.md before running this script to auto-populate PLAN.md."
 fi
 echo ""
 echo "When done, ship from the host:"

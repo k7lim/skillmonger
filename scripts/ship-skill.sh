@@ -125,22 +125,22 @@ else
   echo "  ⚠ No DESIGN.md found (optional but recommended)"
 fi
 
-# Check for status-check.sh
-if [ -f "$SANDBOX_PATH/scripts/status-check.sh" ]; then
-  echo "  ✓ scripts/status-check.sh exists"
+# Check for check-prereqs.sh
+if [ -f "$SANDBOX_PATH/scripts/check-prereqs.sh" ]; then
+  echo "  ✓ scripts/check-prereqs.sh exists"
 
   # Try to run it and validate JSON output
-  if output=$("$SANDBOX_PATH/scripts/status-check.sh" 2>/dev/null); then
+  if output=$("$SANDBOX_PATH/scripts/check-prereqs.sh" 2>/dev/null); then
     if echo "$output" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
-      echo "  ✓ status-check.sh outputs valid JSON"
+      echo "  ✓ check-prereqs.sh outputs valid JSON"
     else
-      echo "  ⚠ status-check.sh output is not valid JSON"
+      echo "  ⚠ check-prereqs.sh output is not valid JSON"
     fi
   else
-    echo "  ⚠ status-check.sh failed to run (may need dependencies)"
+    echo "  ⚠ check-prereqs.sh failed to run (may need dependencies)"
   fi
 else
-  echo "  ⚠ No scripts/status-check.sh (consider adding prerequisite checks)"
+  echo "  ⚠ No scripts/check-prereqs.sh (consider adding prerequisite checks)"
 fi
 
 # Check SKILL.md has real content (not just template)
@@ -153,6 +153,20 @@ if grep -q '\[Describe trigger conditions\]' "$SANDBOX_PATH/SKILL.md" 2>/dev/nul
   fi
 else
   echo "  ✓ SKILL.md has content"
+fi
+
+# Check for empty triggers in CONFIG.yaml
+if [ -f "$SANDBOX_PATH/CONFIG.yaml" ]; then
+  if grep -A 2 'phrases:' "$SANDBOX_PATH/CONFIG.yaml" | grep -qE '^\s*-\s*(TODO|"TODO)'; then
+    echo "  ⚠ CONFIG.yaml has placeholder trigger phrases"
+    echo "    Triggers help the skill get invoked. Consider populating them."
+    echo ""
+  elif ! grep -q 'phrases:' "$SANDBOX_PATH/CONFIG.yaml"; then
+    echo "  ⚠ CONFIG.yaml missing triggers.phrases section"
+    echo ""
+  else
+    echo "  ✓ CONFIG.yaml has trigger phrases"
+  fi
 fi
 
 echo ""
@@ -392,6 +406,16 @@ if [ "$KEEP_SANDBOX" = false ]; then
 else
   echo ""
   echo "  Kept sandbox copy (--keep-sandbox)"
+fi
+
+# --- Clear State ---
+
+STATE_FILE="$HOME/.skillmonger-state"
+if [ -f "$STATE_FILE" ]; then
+  # Only clear if this was the skill in progress
+  if grep -q "SKILL_NAME=\"$SKILL_NAME\"" "$STATE_FILE" 2>/dev/null; then
+    rm "$STATE_FILE"
+  fi
 fi
 
 # --- Summary ---

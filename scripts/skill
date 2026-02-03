@@ -1,0 +1,82 @@
+#!/bin/bash
+# skill - Skillmonger workflow helper
+# Shows current skill status and next steps
+set -euo pipefail
+
+STATE_FILE="$HOME/.skillmonger-state"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+usage() {
+  cat << EOF
+Usage: skill [command]
+
+Commands:
+  status    Show current skill and next step (default)
+  clear     Clear current skill state
+
+Run from anywhere to see where you left off.
+EOF
+}
+
+show_status() {
+  if [ ! -f "$STATE_FILE" ]; then
+    echo "No skill in progress."
+    echo ""
+    echo "To start a new skill:"
+    echo "  1. Write seed: seeds/<skill-name>.md"
+    echo "  2. Run: scripts/develop-skill.sh"
+    return 0
+  fi
+
+  # Read state
+  source "$STATE_FILE"
+
+  # Check if skill directory still exists
+  if [ -n "${SKILL_DIR:-}" ] && [ ! -d "$SKILL_DIR" ]; then
+    echo "Stale state: $SKILL_DIR no longer exists."
+    echo "Run 'skill clear' to reset."
+    return 1
+  fi
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Current skill: $SKILL_NAME"
+  echo "State: $LAST_ACTION ($TIMESTAMP)"
+  echo "Location: $SKILL_DIR"
+  echo ""
+  echo "Next step:"
+  echo "  $NEXT_STEP"
+  echo ""
+  if [ -n "${AFTER_THAT:-}" ]; then
+    echo "Then from host:"
+    echo "  $AFTER_THAT"
+    echo ""
+  fi
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+clear_state() {
+  if [ -f "$STATE_FILE" ]; then
+    rm "$STATE_FILE"
+    echo "Cleared skill state."
+  else
+    echo "No state to clear."
+  fi
+}
+
+# Main
+case "${1:-status}" in
+  status)
+    show_status
+    ;;
+  clear)
+    clear_state
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1"
+    usage
+    exit 1
+    ;;
+esac

@@ -21,7 +21,7 @@ Constraints: `name` is lowercase, hyphens, numbers only (must match directory). 
 
 End the document with a feedback section — see "Feedback mechanism" below.
 
-### 2. Prerequisite checker (`scripts/check-prereqs`)
+### 2. Prerequisite checker (`scripts/check-prereqs.sh`)
 
 Checks whether required tools are installed. Any language. Output contract:
 
@@ -30,6 +30,14 @@ Checks whether required tools are installed. Any language. Output contract:
 ```
 
 Exit 0 always — readiness is in the JSON, not the exit code.
+
+The SKILL.md prerequisites section should include a remediation table:
+
+| Missing | Action |
+|---------|--------|
+| [tool] | How to install, with offer to run if automatable |
+
+For CLI tools installable via npm/pip/brew: Offer to install, don't just instruct.
 
 ### 3. Evaluator (if applicable — see "Feedback mechanism")
 
@@ -45,9 +53,20 @@ tags: comma, separated
 ---
 ```
 
-### 5. Config (`CONFIG.yaml`) and edge case log (`MEMO.md`)
+### 5. Config (`CONFIG.yaml`)
 
-See existing examples in the scaffold or `PLAN.md` for structure.
+**REQUIRED:** Update the scaffolded `CONFIG.yaml` with real triggers:
+
+- `triggers.phrases`: 5-10 natural language patterns that should invoke this skill
+  - Be specific: "download youtube video", not just "download"
+  - Include variations: "get transcript from youtube", "extract audio from video"
+- `triggers.keywords`: 3-5 semantic keywords for matching
+  - Examples: `youtube`, `transcript`, `download`
+- `dependencies.cli`: List required CLI tools (checked by check-prereqs.sh)
+
+### 6. Edge case log (`MEMO.md`)
+
+Optional — create if you encounter edge cases during development.
 
 ## Feedback mechanism
 
@@ -86,3 +105,12 @@ Scripts follow a standard I/O contract: stdin/args in, JSON to stdout. Any langu
 - **Any language:** just make the file executable and follow the I/O contract
 
 The scaffold generates `.sh`. Replace with `.py` or any executable if the skill needs libraries or API access.
+
+## Quality Gates
+
+Before shipping, verify:
+- [ ] SKILL.md under 100 lines (target: 60-80)
+- [ ] No redundant explanations (agent has context)
+- [ ] Tables over prose for structured info
+- [ ] No "the user" or "the agent" - just instructions
+- [ ] CONFIG.yaml triggers populated (not TODO placeholders)

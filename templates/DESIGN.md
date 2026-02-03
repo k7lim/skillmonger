@@ -19,7 +19,7 @@ What needs to be true before this skill can work? List each prerequisite and whe
 | Example: User has API key | ❌ No | Must ask user |
 | | | |
 
-**Action:** For each "Yes", add a check to `scripts/status-check.sh`. For each "No", add a question to SKILL.md's workflow.
+**Action:** For each "Yes", add a check to `scripts/check-prereqs.sh`. For each "No", add a question to SKILL.md's workflow.
 
 ---
 
@@ -91,7 +91,7 @@ How will you know if the skill's output is good? Pick the pattern that fits.
 
 ## Status Check Script Design
 
-Based on the above, your `scripts/status-check.sh` should output JSON like:
+Based on the above, your `scripts/check-prereqs.sh` should output JSON like:
 
 ```json
 {
@@ -114,7 +114,7 @@ The agent reads `ready` to know if it can proceed, and uses `checks` to know wha
 
 Once you understand the above, your SKILL.md should:
 
-1. **Prerequisites section** → "Run `scripts/status-check.sh` and interpret results"
+1. **Prerequisites section** → "Run `scripts/check-prereqs.sh` and interpret results"
 2. **Interpretation table** → Map status values to actions
 3. **Workflow** → Guide the agent through decision points
 4. **Examples** → Show expected inputs/outputs
@@ -123,7 +123,7 @@ Once you understand the above, your SKILL.md should:
 
 ## Checklist Before Promoting
 
-- [ ] `scripts/status-check.sh` covers all detectable prerequisites
+- [ ] `scripts/check-prereqs.sh` covers all detectable prerequisites
 - [ ] Script outputs valid JSON
 - [ ] SKILL.md explains how to interpret every status
 - [ ] Decision points have clear guidance
