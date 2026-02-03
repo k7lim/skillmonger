@@ -39,8 +39,9 @@ vendor/              # External repos (gitignored content, don't edit)
 | Script | Purpose | Depends on |
 |--------|---------|------------|
 | `new-skill.sh` | Create skill in `skills/` | `validate-skill.sh` |
-| `seed-skill.sh` | Capture idea to sandbox research dir | nothing |
-| `develop-skill.sh` | Scaffold in sandbox with BRIEF.md + PLAN.md | `templates/DESIGN.md`, `templates/sandbox-brief.md` |
+| `seed-skill.sh` | Capture idea to `seeds/` | nothing |
+| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md` |
+| `skill` | Show current skill status and next step | `~/.skillmonger-state` |
 | `ship-skill.sh` | Promote sandbox skill to `skills/` | `validate-skill.sh` |
 | `validate-skill.sh` | Check structure and frontmatter | nothing |
 | `deploy-skill.sh` | Symlink to tool directories | `validate-skill.sh` |
@@ -75,14 +76,21 @@ Enforced by `validate-skill.sh` and `hooks/pre-push`:
 **To create a new skill (sandbox):** For skills that need design work or iteration:
 
 ```
-seed-skill.sh my-skill "idea"           # capture idea → sandbox/research/
-develop-skill.sh                         # scaffold → sandbox/projects/skills/
-                                         #   copies seed → PLAN.md
-                                         #   generates BRIEF.md (task brief)
-                                         #   generates DESIGN.md, script templates
-cd ~/Development/sandbox/.../my-skill
-claude "Read BRIEF.md and build the skill"   # yolo agent builds it
-scripts/ship-skill.sh <sandbox-path>     # promote to skills/
+# Write seed in skillmonger
+echo "idea" > seeds/my-skill.md
+
+# Scaffold in sandbox (copies seed → PLAN.md)
+develop-skill.sh
+
+# Check where you left off
+scripts/skill status
+
+# Agent builds it in sandbox
+cd ~/Development/sandbox/skills/my-skill
+claude "Read BRIEF.md and build the skill"
+
+# Promote to skills/
+scripts/ship-skill.sh ~/Development/sandbox/skills/my-skill
 ```
 
 `BRIEF.md` is a disposable task brief with interface contracts and build specs — not long-term context. It is not shipped. `PLAN.md` carries the seed idea and any detailed plan into the sandbox.

@@ -49,11 +49,21 @@ Prompts for name, description, triggers, then generates all files including the 
 Use the sandbox workflow for skills that need design work:
 
 ```bash
-scripts/seed-skill.sh my-skill "one-line idea"    # capture idea → sandbox/research/
-scripts/develop-skill.sh                           # scaffold in sandbox
-cd ~/Development/sandbox/projects/skills/my-skill
-claude "Read BRIEF.md and build the skill"         # yolo agent builds it
-scripts/ship-skill.sh ~/Development/sandbox/projects/skills/my-skill
+# Write your idea
+echo "Download videos and extract transcripts" > seeds/my-skill.md
+
+# Scaffold in sandbox (copies seed → PLAN.md)
+scripts/develop-skill.sh
+
+# Check where you left off anytime
+scripts/skill status
+
+# Launch agent in sandbox
+cd ~/Development/sandbox/skills/my-skill
+claude "Read BRIEF.md and build the skill"
+
+# Ship when ready
+scripts/ship-skill.sh ~/Development/sandbox/skills/my-skill
 ```
 
 `develop-skill.sh` copies seed notes into `PLAN.md` and generates `BRIEF.md` — a task brief with interface contracts for the sandbox agent. Neither file ships; they're disposable scaffolding. `DESIGN.md` prompts structured thinking about state detection, decision points, and feedback mechanism before building.
@@ -150,9 +160,10 @@ This shows feedback summary + MEMO.md content, then guides you through graduatin
 | Script | Purpose |
 |--------|---------|
 | `new-skill.sh` | Create a new skill directly in skillmonger |
-| `seed-skill.sh` | Capture a skill idea with minimal friction |
-| `develop-skill.sh` | Create a skill scaffold in sandbox for development |
-| `ship-skill.sh` | Ship a developed skill from sandbox to skillmonger |
+| `seed-skill.sh` | Capture a skill idea to `seeds/` |
+| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) |
+| `skill` | Show current skill status and next step |
+| `ship-skill.sh` | Promote sandbox skill to skillmonger |
 | `validate-skill.sh` | Validate skill structure and frontmatter |
 | `deploy-skill.sh` | Deploy skills via symlinks to tool directories |
 | `log-feedback.sh` | Record a feedback entry for a skill |

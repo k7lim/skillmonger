@@ -22,8 +22,8 @@ Options:
   --help                Show this help message
 
 Example:
-  $(basename "$0") ~/Development/sandbox/projects/skills/my-skill
-  $(basename "$0") ~/Development/sandbox/projects/skills/my-skill --keep-sandbox
+  $(basename "$0") ~/Development/sandbox/skills/my-skill
+  $(basename "$0") ~/Development/sandbox/skills/my-skill --keep-sandbox
 EOF
 }
 

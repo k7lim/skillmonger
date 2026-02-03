@@ -7,7 +7,9 @@
 #   echo "idea" | seed-skill.sh my-skill  # pipe the idea
 set -euo pipefail
 
-SEED_DIR="$HOME/Development/sandbox/research/skilldev"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SEED_DIR="$PROJECT_ROOT/seeds"
 mkdir -p "$SEED_DIR"
 
 # Get skill name
