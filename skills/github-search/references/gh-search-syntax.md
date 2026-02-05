@@ -51,6 +51,6 @@ gh api repos/owner/repo/contents/package.json --jq '.content' | base64 -d | jq '
 
 ```bash
 # Find related projects from same author
-gh repo list owner --limit 50 --json name,description,stargazersCount,pushedAt \
+gh repo list owner --limit 50 --json name,description,stargazerCount,pushedAt \
   --jq '.[] | select(.description | test("keyword"; "i"))'
 ```

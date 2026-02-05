@@ -22,9 +22,7 @@ Log unusual situations encountered during skill execution.
 
 ## Edge Cases Log
 
-<!-- Log format:
-### [Date] Brief description
-**Situation:** What happened
-**Resolution:** How it was handled
-**Learning:** What to do differently
--->
+### [2026-02-05] gh CLI field names differ between subcommands
+**Situation:** `gh repo view --json stargazersCount` fails — field is `stargazerCount` (singular)
+**Resolution:** Fixed SKILL.md; added `references/gh-json-fields.md` with complete field map
+**Learning:** Field names are inconsistent across `gh` subcommands. Always check `references/gh-json-fields.md` before constructing `--json` flags. Key trap: `stargazersCount` (search) vs `stargazerCount` (view).

@@ -34,7 +34,7 @@ Skip: abandonware, trivial forks, off-topic matches.
 ### 3. Deep Dive Top Candidates
 
 ```bash
-gh repo view owner/repo --json name,description,stargazersCount,forksCount,openIssues,pushedAt,licenseInfo
+gh repo view owner/repo --json name,description,stargazerCount,forkCount,pushedAt,licenseInfo,url
 gh pr list --repo owner/repo --state merged --limit 5  # PRs being merged = healthy
 ```
 
