@@ -21,22 +21,62 @@ check_curl() {
   checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
 }
 
-# Check internet connectivity by pinging a reliable endpoint
-check_internet() {
-  local name="internet"
+# Verify key API endpoints are reachable (also serves as internet check)
+check_apis() {
+  local available=()
 
-  # Try to reach PubMed with a short timeout
-  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://pubmed.ncbi.nlm.nih.gov" 2>/dev/null | grep -q "200\|301\|302"; then
-    checks+=("{\"name\":\"$name\",\"status\":\"ok\"}")
-  else
-    checks+=("{\"name\":\"$name\",\"status\":\"unreachable\",\"note\":\"Could not reach pubmed.ncbi.nlm.nih.gov\"}")
-    all_ok=false
+  # Semantic Scholar (primary database)
+  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://api.semanticscholar.org/graph/v1/paper/search?query=test&limit=1" 2>/dev/null | grep -q "200"; then
+    available+=("semantic_scholar")
   fi
+
+  # PubMed E-utilities
+  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=test&retmax=1&retmode=json" 2>/dev/null | grep -q "200"; then
+    available+=("pubmed")
+  fi
+
+  # arXiv API
+  if curl -s --max-time 8 -o /dev/null -w "%{http_code}" "https://export.arxiv.org/api/query?search_query=all:test&max_results=1" 2>/dev/null | grep -q "200"; then
+    available+=("arxiv")
+  fi
+
+  # bioRxiv API
+  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://api.biorxiv.org/details/biorxiv/2025-01-01/2025-01-02/0" 2>/dev/null | grep -q "200"; then
+    available+=("biorxiv")
+    available+=("medrxiv")
+  fi
+
+  # CrossRef API
+  if curl -s --max-time 5 -o /dev/null -w "%{http_code}" "https://api.crossref.org/works?query=test&rows=1" 2>/dev/null | grep -q "200"; then
+    available+=("crossref")
+  fi
+
+  # Build JSON array
+  local db_json=""
+  for i in "${!available[@]}"; do
+    if [ $i -gt 0 ]; then
+      db_json+=","
+    fi
+    db_json+="\"${available[$i]}\""
+  done
+
+  echo "${#available[@]}|$db_json"
 }
 
-# Run all checks
+# Run checks
 check_curl
-check_internet
+api_result=$(check_apis)
+api_count="${api_result%%|*}"
+db_json="${api_result#*|}"
+checks+=("{\"name\":\"api_endpoints\",\"status\":\"ok\",\"available_count\":$api_count}")
+
+# Derive internet status from API reachability
+if [ -n "$db_json" ]; then
+  checks+=("{\"name\":\"internet\",\"status\":\"ok\"}")
+else
+  checks+=("{\"name\":\"internet\",\"status\":\"unreachable\",\"note\":\"No API endpoints reachable\"}")
+  all_ok=false
+fi
 
 # Build checks array JSON
 checks_json=""
@@ -53,7 +93,7 @@ cat << EOF
   "ready": $all_ok,
   "checks": [$checks_json],
   "context": {
-    "available_databases": ["pubmed", "arxiv", "biorxiv", "medrxiv", "semantic_scholar"]
+    "available_databases": [$db_json]
   }
 }
 EOF

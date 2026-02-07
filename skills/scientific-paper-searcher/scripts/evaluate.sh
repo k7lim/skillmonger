@@ -22,6 +22,7 @@ has_authors=false
 has_year=false
 has_doi_or_url=false
 has_multiple_sources=false
+has_citations=false
 paper_count=0
 
 # Check for paper entries (looking for markdown headers with paper info)
@@ -41,8 +42,13 @@ if echo "$INPUT" | grep -qiE "\*\*Year:\*\*|Year:|[0-9]{4}"; then
   has_year=true
 fi
 
-if echo "$INPUT" | grep -qiE "doi\.org|arxiv\.org/abs|pubmed\.ncbi|semanticscholar\.org|biorxiv\.org|\*\*DOI:\*\*|\*\*URL:\*\*|\*\*arXiv:\*\*"; then
+if echo "$INPUT" | grep -qiE "doi\.org|arxiv\.org/abs|pubmed\.ncbi|semanticscholar\.org|biorxiv\.org|\*\*DOI:\*\*|\*\*URL:\*\*|\*\*arXiv:\*\*|\*\*Link:\*\*"; then
   has_doi_or_url=true
+fi
+
+# Check for citation counts
+if echo "$INPUT" | grep -qiE "\*\*Citations:\*\*|citationCount|cited by [0-9]|citations: [0-9]"; then
+  has_citations=true
 fi
 
 # Check for multiple databases mentioned
@@ -51,6 +57,7 @@ echo "$INPUT" | grep -qi "pubmed" && ((db_count++)) || true
 echo "$INPUT" | grep -qi "arxiv" && ((db_count++)) || true
 echo "$INPUT" | grep -qi "biorxiv\|medrxiv" && ((db_count++)) || true
 echo "$INPUT" | grep -qi "semantic scholar" && ((db_count++)) || true
+echo "$INPUT" | grep -qi "crossref" && ((db_count++)) || true
 
 if [ "$db_count" -ge 2 ]; then
   has_multiple_sources=true
@@ -85,6 +92,7 @@ checks_json=$(cat << CHECKS
   "has_authors": $has_authors,
   "has_year": $has_year,
   "has_doi_or_url": $has_doi_or_url,
+  "has_citations": $has_citations,
   "databases_searched": $db_count,
   "multiple_sources": $has_multiple_sources
 }
