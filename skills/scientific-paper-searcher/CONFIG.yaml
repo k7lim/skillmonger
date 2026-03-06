@@ -34,8 +34,15 @@ dependencies:
   tools:
     - WebFetch
     - WebSearch
+    - Bash
   cli:
     - curl
+    - jq
+    - xmllint
+  env:
+    - name: SEMANTIC_SCHOLAR_API_KEY
+      required: false
+      description: API key from semanticscholar.org — enables 1 RPS (vs shared pool throttling)
 
 loading:
   primary: SKILL.md

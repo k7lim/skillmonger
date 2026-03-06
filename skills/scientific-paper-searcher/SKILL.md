@@ -38,9 +38,71 @@ Optional filters to ask about: year range, minimum citation count, open access o
 
 Search at least 2 databases. Always include Semantic Scholar for citation counts.
 
-### 3. Search — API Endpoints
+### 3. Rate Limit Policy
 
-**Use WebFetch with these API URLs** (not the web UIs — these return structured data).
+**NEVER fire parallel API requests. Call scripts sequentially, one database at a time.**
+
+Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases.
+
+**Request spacing** (mandatory — enforced by scripts, manual if using WebFetch):
+
+| Database | Min delay between requests | Notes |
+|----------|---------------------------|-------|
+| Semantic Scholar | **3 seconds** (unauth), **1 second** (with key) | Most critical — shared pool 429s fast |
+| PubMed | 400ms (unauth), 100ms (with key) | 2-step search counts as 2 requests |
+| arXiv | 3 seconds | Slow API, be polite |
+| bioRxiv | 1 second | Undocumented limits |
+| CrossRef | 200ms (with `mailto`) | Include `mailto` always |
+
+**Semantic Scholar API key** (optional but recommended):
+- Set env var `SEMANTIC_SCHOLAR_API_KEY` if available
+- Pass as header: `x-api-key: $SEMANTIC_SCHOLAR_API_KEY`
+- Without a key, the shared unauthenticated pool is aggressive — expect 429s on >2-3 rapid requests
+
+**Search order to minimize 429 risk:**
+1. Query PubMed or arXiv first (more generous limits)
+2. Query Semantic Scholar last, only for citation counts or fields not covered above
+3. If Semantic Scholar 429s, use CrossRef as citation count fallback
+
+**429 recovery (exponential backoff):**
+1. First 429: wait **30 seconds**, retry once
+2. Second 429: wait **60 seconds**, retry once
+3. Third 429: **stop** — switch to another database, do NOT keep retrying
+4. Tell the user which database was unavailable
+
+**Reduce request volume:**
+- Request only the fields you need (smaller `fields=` param = faster response)
+- Use `limit=20` not `limit=100` unless the user asked for more
+- Combine PubMed esummary IDs into one call (comma-separated) rather than individual lookups
+- For Semantic Scholar, prefer `/paper/search` over `/paper/search/bulk` unless sorting by citations
+
+### 3.5. Using Search Scripts
+
+**Prefer `./scripts/search-*` via Bash over raw WebFetch for API calls.** The scripts handle rate limiting, URL encoding, 429 retry, and output normalization automatically.
+
+```bash
+# Individual databases
+./scripts/search-pubmed "reading motivation adolescents" --year-min 2020 --limit 15
+./scripts/search-crossref "reading for pleasure teenagers" --year-min 2019
+./scripts/search-arxiv "transformer attention mechanism" --category cs.LG
+./scripts/search-s2 "adolescent reading engagement" --min-citations 10
+
+# Orchestrator (searches multiple, deduplicates by DOI)
+./scripts/search "reading motivation" --databases pubmed,crossref --year-min 2020
+```
+
+All scripts output the same normalized JSON schema:
+```json
+{"database": "...", "query": "...", "total": N, "results": [{title, authors, year, citations, doi, url, open_access_url, abstract, source_id}], "error": null}
+```
+
+**When to still use WebFetch:** One-off DOI lookups, Semantic Scholar paper/citation/reference lookups by ID, or web search results.
+
+**Discover + enrich pattern:** Search PubMed/CrossRef/arXiv first (generous limits), then use S2 only for citation count enrichment via individual DOI lookups if needed (e.g., `WebFetch https://api.semanticscholar.org/graph/v1/paper/DOI:10.xxx?fields=citationCount`).
+
+### 4. Search — API Endpoints
+
+**Use `./scripts/search-*` via Bash (preferred) or WebFetch with these API URLs** (not the web UIs — these return structured data).
 
 #### Semantic Scholar (best default — covers all fields, returns JSON)
 
@@ -114,7 +176,7 @@ Response JSON: `{"message": {"items": [{"DOI": "...", "title": [...], "author": 
 **Date filter:** `&filter=from-pub-date:2020,until-pub-date:2025`
 **Include `mailto`** for polite pool (faster responses).
 
-### 4. Output Format
+### 5. Output Format
 
 ```markdown
 ## Search Results: [Topic]
@@ -140,7 +202,7 @@ Response JSON: `{"message": {"items": [{"DOI": "...", "title": [...], "author": 
 1. Start with...
 ```
 
-### 5. Advanced Search
+### 6. Advanced Search
 
 #### Find a specific paper by title
 ```
@@ -169,7 +231,7 @@ https://api.semanticscholar.org/graph/v1/paper/PMID:12345678?fields=title,author
 https://api.semanticscholar.org/graph/v1/author/search?query=AUTHOR+NAME&fields=name,citationCount,hIndex,paperCount
 ```
 
-### 6. Edge Cases
+### 7. Edge Cases
 
 | Issue | Action |
 |-------|--------|
@@ -177,9 +239,12 @@ https://api.semanticscholar.org/graph/v1/author/search?query=AUTHOR+NAME&fields=
 | Too many (>100) | Add year filter, `minCitationCount`, narrow terms |
 | Database down | Note limitation, use others |
 | Wants seminal papers | Use Semantic Scholar with `&sort=citationCount:desc` (bulk endpoint) or no date filter |
-| Rate limited (429) | Wait 30s and retry, or switch databases |
+| Rate limited (429) | Follow Section 3 backoff: 30s → 60s → stop and switch databases |
 | bioRxiv keyword search | Use Semantic Scholar with `&venue=bioRxiv` instead of bioRxiv API |
 | Springer paper missing abstract | Known S2 limitation — fetch from PubMed instead |
+| PDF URLs | WebFetch cannot parse PDFs. Use API metadata only |
+| Publisher paywalls (403/303) | Cannot scrape publisher sites. Use API data |
+| `/paper/search/match` 404s | Returns 404 on non-exact titles. Use `/paper/search` for fuzzy |
 
 ## Feedback
 

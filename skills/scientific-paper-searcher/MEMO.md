@@ -32,6 +32,15 @@
 | S2 relevance search >1000 results | Use bulk endpoint (`/paper/search/bulk`) with continuation tokens |
 | Preprint→published mapping | bioRxiv `/publisher/` endpoint or CrossRef DOI lookup |
 
+## Session Failure Lessons (2026-03)
+
+- **Parallel WebFetch to same API = instant 429.** Semantic Scholar's shared pool rate-limits after 2-3 rapid requests. Never fire parallel WebFetch calls to any API.
+- **PubMed is a health database.** Education/psychology queries return mostly health papers unless you use careful MeSH terms. For non-biomedical social science, prefer CrossRef or Semantic Scholar.
+- **CrossRef without `type:journal-article` filter returns junk.** Book reviews (e.g., Choice Reviews Online) flood results. Always include `filter=type:journal-article,has-abstract:true`.
+- **S2 `/paper/search/match` returns 404 on non-exact titles.** Use `/paper/search` for fuzzy matching instead.
+- **PDF URLs are useless to WebFetch.** It can't parse PDFs — use API metadata only.
+- **Publisher sites return 403/303.** Don't try to scrape publisher pages — use API data.
+
 ## Feedback Log
 
 (Populated via FEEDBACK.jsonl)

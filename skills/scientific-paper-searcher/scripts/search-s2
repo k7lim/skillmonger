@@ -1,0 +1,91 @@
+#!/bin/bash
+# search-s2 — Search Semantic Scholar with rate limiting and normalized output
+# Usage: search-s2 <query> [--year RANGE] [--min-citations N] [--fields-of-study FIELD] [--limit N] [--venue VENUE]
+set -uo pipefail
+
+# --- Defaults ---
+QUERY=""
+YEAR=""
+MIN_CITATIONS=""
+FIELDS_OF_STUDY=""
+LIMIT=20
+VENUE=""
+API_FIELDS="title,authors,year,citationCount,abstract,url,externalIds,openAccessPdf"
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --year) YEAR="$2"; shift 2 ;;
+    --min-citations) MIN_CITATIONS="$2"; shift 2 ;;
+    --fields-of-study) FIELDS_OF_STUDY="$2"; shift 2 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
+    --venue) VENUE="$2"; shift 2 ;;
+    --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
+    *) QUERY="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$QUERY" ]]; then
+  echo '{"error":"missing_query","detail":"Usage: search-s2 <query> [options]"}'
+  exit 1
+fi
+
+# --- Rate limiting ---
+if [[ -n "${SEMANTIC_SCHOLAR_API_KEY:-}" ]]; then
+  DELAY=1
+  AUTH_HEADER=(-H "x-api-key: $SEMANTIC_SCHOLAR_API_KEY")
+else
+  DELAY=3
+  AUTH_HEADER=()
+fi
+sleep "$DELAY"
+
+# --- Build URL ---
+ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
+URL="https://api.semanticscholar.org/graph/v1/paper/search?query=${ENCODED_QUERY}&fields=${API_FIELDS}&limit=${LIMIT}"
+
+[[ -n "$YEAR" ]] && URL+="&year=${YEAR}"
+[[ -n "$MIN_CITATIONS" ]] && URL+="&minCitationCount=${MIN_CITATIONS}"
+[[ -n "$FIELDS_OF_STUDY" ]] && URL+="&fieldsOfStudy=${FIELDS_OF_STUDY}"
+[[ -n "$VENUE" ]] && URL+="&venue=${VENUE}"
+
+# --- Fetch ---
+fetch() {
+  curl -s -w "\n%{http_code}" --max-time 15 "${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" "$URL"
+}
+
+RESPONSE=$(fetch)
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+# --- Handle 429 ---
+if [[ "$HTTP_CODE" == "429" ]]; then
+  sleep 30
+  RESPONSE=$(fetch)
+  HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+  BODY=$(echo "$RESPONSE" | sed '$d')
+fi
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo '{"database":"semantic_scholar","query":"'"$QUERY"'","total":0,"results":[],"error":"http_'"$HTTP_CODE"'"}'
+  exit 1
+fi
+
+# --- Normalize with jq ---
+echo "$BODY" | jq --arg query "$QUERY" '{
+  database: "semantic_scholar",
+  query: $query,
+  total: (.total // 0),
+  results: [(.data // [])[] | {
+    title: .title,
+    authors: [(.authors // [])[] | .name],
+    year: .year,
+    citations: (.citationCount // 0),
+    doi: (.externalIds.DOI // null),
+    url: .url,
+    open_access_url: (.openAccessPdf.url // null),
+    abstract: .abstract,
+    source_id: ("S2:" + (.paperId // "unknown"))
+  }],
+  error: null
+}'

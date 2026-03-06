@@ -1,0 +1,114 @@
+#!/bin/bash
+# search-arxiv — Search arXiv Atom API with rate limiting and normalized output
+# Usage: search-arxiv <query> [--category CAT] [--limit N] [--sort FIELD]
+set -uo pipefail
+
+# --- Defaults ---
+QUERY=""
+CATEGORY=""
+LIMIT=20
+SORT="submittedDate"
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --category) CATEGORY="$2"; shift 2 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
+    --sort) SORT="$2"; shift 2 ;;
+    --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
+    *) QUERY="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$QUERY" ]]; then
+  echo '{"error":"missing_query","detail":"Usage: search-arxiv <query> [options]"}'
+  exit 1
+fi
+
+# --- Rate limiting ---
+sleep 3
+
+# --- Build URL ---
+ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
+SEARCH_QUERY="all:${ENCODED_QUERY}"
+[[ -n "$CATEGORY" ]] && SEARCH_QUERY="${SEARCH_QUERY}+AND+cat:${CATEGORY}"
+
+URL="https://export.arxiv.org/api/query?search_query=${SEARCH_QUERY}&max_results=${LIMIT}&sortBy=${SORT}&sortOrder=descending"
+
+# --- Fetch ---
+RESPONSE=$(curl -s --max-time 20 -w "\n%{http_code}" "$URL")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo '{"database":"arxiv","query":"'"$QUERY"'","total":0,"results":[],"error":"http_'"$HTTP_CODE"'"}'
+  exit 1
+fi
+
+# --- Parse XML with xmllint and build JSON ---
+# Extract total results
+TOTAL=$(echo "$BODY" | xmllint --xpath 'string(//*[local-name()="totalResults"])' - 2>/dev/null || echo "0")
+
+# Count entries
+ENTRY_COUNT=$(echo "$BODY" | xmllint --xpath 'count(//*[local-name()="entry"])' - 2>/dev/null || echo "0")
+
+if [[ "$ENTRY_COUNT" == "0" || -z "$ENTRY_COUNT" ]]; then
+  echo '{"database":"arxiv","query":"'"$QUERY"'","total":0,"results":[],"error":null}'
+  exit 0
+fi
+
+# Extract entries one by one and build JSON array
+RESULTS="["
+for i in $(seq 1 "$ENTRY_COUNT"); do
+  TITLE=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="title"])' - 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//')
+  ABSTRACT=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="summary"])' - 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ *//; s/ *$//')
+  PUBLISHED=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="published"])' - 2>/dev/null)
+  YEAR=$(echo "$PUBLISHED" | cut -c1-4)
+  LINK=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="id"])' - 2>/dev/null)
+  PDF_LINK=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="link"][@title="pdf"]/@href)' - 2>/dev/null)
+  DOI=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="doi"])' - 2>/dev/null)
+
+  # Extract all authors for this entry
+  AUTHOR_COUNT=$(echo "$BODY" | xmllint --xpath 'count((//*[local-name()="entry"])['"$i"']/*[local-name()="author"])' - 2>/dev/null || echo "0")
+  AUTHORS="["
+  for j in $(seq 1 "$AUTHOR_COUNT"); do
+    ANAME=$(echo "$BODY" | xmllint --xpath 'string((//*[local-name()="entry"])['"$i"']/*[local-name()="author"]['"$j"']/*[local-name()="name"])' - 2>/dev/null)
+    [[ $j -gt 1 ]] && AUTHORS+=","
+    AUTHORS+="$(echo "$ANAME" | jq -Rs '.')"
+  done
+  AUTHORS+="]"
+
+  # Extract arXiv ID from the link
+  ARXIV_ID=$(echo "$LINK" | sed 's|.*/abs/||; s|v[0-9]*$||')
+
+  [[ $i -gt 1 ]] && RESULTS+=","
+  RESULTS+=$(jq -n \
+    --arg title "$TITLE" \
+    --argjson authors "$AUTHORS" \
+    --arg year "$YEAR" \
+    --arg doi "$DOI" \
+    --arg url "$LINK" \
+    --arg pdf "$PDF_LINK" \
+    --arg abstract "$ABSTRACT" \
+    --arg arxiv_id "$ARXIV_ID" \
+    '{
+      title: $title,
+      authors: $authors,
+      year: ($year | if . != "" then tonumber else null end),
+      citations: null,
+      doi: (if $doi != "" then $doi else null end),
+      url: $url,
+      open_access_url: (if $pdf != "" then $pdf else null end),
+      abstract: $abstract,
+      source_id: ("ArXiv:" + $arxiv_id)
+    }')
+done
+RESULTS+="]"
+
+jq -n --arg query "$QUERY" --arg total "$TOTAL" --argjson results "$RESULTS" '{
+  database: "arxiv",
+  query: $query,
+  total: ($total | tonumber),
+  results: $results,
+  error: null
+}'

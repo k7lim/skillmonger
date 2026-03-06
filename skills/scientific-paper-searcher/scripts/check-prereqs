@@ -63,8 +63,36 @@ check_apis() {
   echo "${#available[@]}|$db_json"
 }
 
+# Check if jq is installed
+check_jq() {
+  local name="jq"
+  if ! command -v jq &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\"}")
+    all_ok=false
+    return
+  fi
+  local version
+  version=$(jq --version 2>&1 || echo "unknown")
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+}
+
+# Check if xmllint is installed
+check_xmllint() {
+  local name="xmllint"
+  if ! command -v xmllint &>/dev/null; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\"}")
+    all_ok=false
+    return
+  fi
+  local version
+  version=$(xmllint --version 2>&1 | head -1 || echo "unknown")
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+}
+
 # Run checks
 check_curl
+check_jq
+check_xmllint
 api_result=$(check_apis)
 api_count="${api_result%%|*}"
 db_json="${api_result#*|}"

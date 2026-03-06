@@ -1,0 +1,103 @@
+#!/bin/bash
+# search — Orchestrator: search multiple databases sequentially, merge by DOI
+# Usage: search <query> [--databases s2,pubmed,crossref,arxiv] [pass-through options]
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# --- Defaults ---
+QUERY=""
+DATABASES="pubmed,crossref"
+PASSTHROUGH_ARGS=()
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --databases) DATABASES="$2"; shift 2 ;;
+    --year) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --year-min) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --year-max) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --min-citations) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --fields-of-study) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --limit) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --venue) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --category) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --sort) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --mailto) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --reviews-only) PASSTHROUGH_ARGS+=("$1"); shift ;;
+    --open-access) PASSTHROUGH_ARGS+=("$1"); shift ;;
+    --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
+    *) QUERY="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$QUERY" ]]; then
+  echo '{"error":"missing_query","detail":"Usage: search <query> --databases s2,pubmed,crossref,arxiv [options]"}'
+  exit 1
+fi
+
+# --- Map database names to scripts ---
+db_to_script() {
+  case "$1" in
+    s2) echo "search-s2" ;;
+    pubmed) echo "search-pubmed" ;;
+    crossref) echo "search-crossref" ;;
+    arxiv) echo "search-arxiv" ;;
+    *) echo "" ;;
+  esac
+}
+
+# --- Run each database sequentially ---
+ALL_RESULTS="[]"
+SOURCES="[]"
+IFS=',' read -ra DBS <<< "$DATABASES"
+
+for db in "${DBS[@]}"; do
+  db=$(echo "$db" | xargs)  # trim whitespace
+  SCRIPT=$(db_to_script "$db")
+  if [[ -z "$SCRIPT" ]]; then
+    SOURCES=$(echo "$SOURCES" | jq --arg db "$db" '. + [{"database": $db, "error": "unknown_database"}]')
+    continue
+  fi
+
+  SCRIPT_PATH="${SCRIPT_DIR}/${SCRIPT}"
+  if [[ ! -x "$SCRIPT_PATH" ]]; then
+    SOURCES=$(echo "$SOURCES" | jq --arg db "$db" '. + [{"database": $db, "error": "script_not_found"}]')
+    continue
+  fi
+
+  # Run the script
+  RESULT=$("$SCRIPT_PATH" "$QUERY" "${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}" 2>/dev/null || echo '{"database":"'"$db"'","error":"script_failed","results":[]}')
+
+  # Extract results and source metadata
+  DB_NAME=$(echo "$RESULT" | jq -r '.database // "unknown"')
+  DB_ERROR=$(echo "$RESULT" | jq -r '.error // "null"')
+  DB_TOTAL=$(echo "$RESULT" | jq -r '.total // 0')
+  DB_RESULTS=$(echo "$RESULT" | jq '.results // []')
+
+  SOURCES=$(echo "$SOURCES" | jq --arg db "$DB_NAME" --arg err "$DB_ERROR" --argjson total "$DB_TOTAL" \
+    '. + [{"database": $db, "total": $total, "error": (if $err == "null" then null else $err end)}]')
+
+  ALL_RESULTS=$(echo "$ALL_RESULTS" | jq --argjson new "$DB_RESULTS" '. + $new')
+done
+
+# --- Deduplicate by DOI (keep first seen) ---
+DEDUPED=$(echo "$ALL_RESULTS" | jq '[
+  group_by(if .doi then .doi else .source_id end)[]
+  | .[0]
+]')
+
+DEDUPED_COUNT=$(echo "$DEDUPED" | jq 'length')
+
+# --- Output ---
+jq -n \
+  --arg query "$QUERY" \
+  --argjson sources "$SOURCES" \
+  --argjson results "$DEDUPED" \
+  --argjson total "$DEDUPED_COUNT" \
+  '{
+    query: $query,
+    total_unique: $total,
+    sources: $sources,
+    results: $results
+  }'

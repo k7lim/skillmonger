@@ -1,0 +1,85 @@
+#!/bin/bash
+# search-pubmed — Search PubMed via E-utilities with rate limiting and normalized output
+# Usage: search-pubmed <query> [--year-min YYYY] [--year-max YYYY] [--limit N] [--reviews-only] [--open-access]
+set -uo pipefail
+
+# --- Defaults ---
+QUERY=""
+YEAR_MIN=""
+YEAR_MAX=""
+LIMIT=20
+REVIEWS_ONLY=false
+OPEN_ACCESS=false
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --year-min) YEAR_MIN="$2"; shift 2 ;;
+    --year-max) YEAR_MAX="$2"; shift 2 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
+    --reviews-only) REVIEWS_ONLY=true; shift ;;
+    --open-access) OPEN_ACCESS=true; shift ;;
+    --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
+    *) QUERY="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$QUERY" ]]; then
+  echo '{"error":"missing_query","detail":"Usage: search-pubmed <query> [options]"}'
+  exit 1
+fi
+
+# --- Build search term ---
+ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
+TERM="$ENCODED_QUERY"
+[[ "$REVIEWS_ONLY" == true ]] && TERM="${TERM}+AND+review[pt]"
+[[ "$OPEN_ACCESS" == true ]] && TERM="${TERM}+AND+free+full+text[filter]"
+
+# --- Build esearch URL ---
+ESEARCH_URL="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${TERM}&retmax=${LIMIT}&retmode=json"
+[[ -n "$YEAR_MIN" ]] && ESEARCH_URL+="&mindate=${YEAR_MIN}&datetype=pdat"
+[[ -n "$YEAR_MAX" ]] && ESEARCH_URL+="&maxdate=${YEAR_MAX}&datetype=pdat"
+# datetype needed for both min and max — ensure it's present if either is set
+if [[ -n "$YEAR_MIN" && -z "$YEAR_MAX" ]]; then
+  ESEARCH_URL+="&maxdate=3000"
+elif [[ -z "$YEAR_MIN" && -n "$YEAR_MAX" ]]; then
+  ESEARCH_URL+="&mindate=1900&datetype=pdat"
+fi
+
+# --- Step 1: esearch ---
+RESPONSE=$(curl -s --max-time 15 "$ESEARCH_URL")
+PMIDS=$(echo "$RESPONSE" | jq -r '.esearchresult.idlist // [] | join(",")')
+TOTAL=$(echo "$RESPONSE" | jq -r '.esearchresult.count // "0"')
+
+if [[ -z "$PMIDS" || "$PMIDS" == "null" ]]; then
+  echo '{"database":"pubmed","query":"'"$QUERY"'","total":0,"results":[],"error":null}'
+  exit 0
+fi
+
+# --- 400ms delay between the two calls ---
+sleep 0.4
+
+# --- Step 2: esummary ---
+ESUMMARY_URL="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${PMIDS}&retmode=json"
+DETAILS=$(curl -s --max-time 15 "$ESUMMARY_URL")
+
+# --- Normalize with jq ---
+echo "$DETAILS" | jq --arg query "$QUERY" --arg total "$TOTAL" '{
+  database: "pubmed",
+  query: $query,
+  total: ($total | tonumber),
+  results: [
+    .result | to_entries[] | select(.key != "uids") | .value | {
+      title: .title,
+      authors: [(.authors // [])[] | .name],
+      year: ((.pubdate // "" | split(" ") | .[0]) // null),
+      citations: null,
+      doi: ((.elocationid // "") | if test("10\\.") then (capture("(?<d>10\\..+)") | .d | rtrimstr(" ")) else null end),
+      url: ("https://pubmed.ncbi.nlm.nih.gov/" + .uid + "/"),
+      open_access_url: null,
+      abstract: null,
+      source_id: ("PMID:" + .uid)
+    }
+  ],
+  error: null
+}'

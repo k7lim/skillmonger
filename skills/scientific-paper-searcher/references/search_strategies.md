@@ -54,6 +54,7 @@ GET /paper/{id}/references?fields=title,authors,year,citationCount&limit=50
 ```
 GET /paper/search/match?query=EXACT+TITLE&fields=FIELDS
 ```
+**Warning:** Returns 404 on non-exact titles. Use `/paper/search` for fuzzy matching instead.
 
 ### Author Search
 ```
@@ -62,11 +63,13 @@ GET /author/{id}/papers?fields=title,year,citationCount&limit=100
 ```
 
 ### Rate Limits
-- **Unauthenticated:** 5,000 requests per 5 minutes (shared pool)
-- **Authenticated:** 1 RPS for search/batch/recommendations; 10 RPS for other endpoints
-- **Auth header:** `x-api-key: YOUR_KEY`
-- **On 429:** Exponential backoff required — wait 30s, then 60s, then 120s
+- **Unauthenticated:** 5,000 requests per 5 minutes (shared pool) — but in practice, the shared pool 429s after just 2-3 rapid requests. Treat the real limit as ~1 request per 3 seconds.
+- **Authenticated (with API key):** 1 RPS for search/batch/recommendations; 10 RPS for other endpoints
+- **Auth header:** `x-api-key: YOUR_KEY` (env var: `SEMANTIC_SCHOLAR_API_KEY`)
+- **On 429:** Exponential backoff — wait 30s, retry; wait 60s, retry; then stop and switch databases
+- **Prevention:** Always space requests by 3s (unauth) or 1s (auth). Query other databases first.
 - **Gotcha:** Springer abstracts are NOT returned (licensing restriction)
+- **Tier note:** Unauthenticated pool is shared across all users. In practice, 2-3 rapid requests trigger 429. Use `./scripts/search-s2` which enforces delays automatically.
 
 ---
 
