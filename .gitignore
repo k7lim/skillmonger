@@ -1,6 +1,8 @@
 # Build output
 dist/
 .claude/skills/
+.beads/backup/
+.beads/embeddeddolt/
 
 # External vendor repos
 vendor/
