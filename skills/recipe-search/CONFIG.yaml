@@ -1,0 +1,32 @@
+# Configuration for recipe-search
+
+skill:
+  name: recipe-search
+  version: 0.2.0
+  created: 2026-02-07
+  updated: 2026-02-08
+
+triggers:
+  phrases:
+    - "find me a recipe for"
+    - "search for recipes"
+    - "how do I cook"
+    - "recipe for"
+    - "what's a good recipe"
+    - "meal ideas for"
+    - "I want to make"
+    - "cooking inspiration"
+  keywords:
+    - recipe
+    - cooking
+    - meal
+    - ingredients
+    - dish
+
+dependencies:
+  tools: [WebSearch]
+  cli: [python3, pip]
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
