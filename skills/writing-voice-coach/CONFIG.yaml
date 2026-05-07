@@ -1,0 +1,33 @@
+# Configuration for writing-voice-coach
+
+skill:
+  name: writing-voice-coach
+  version: 0.1.0
+  created: 2026-02-02
+  updated: 2026-02-03
+
+triggers:
+  phrases:
+    - "check my writing for AI slop"
+    - "does this sound like AI wrote it"
+    - "review this for AI patterns"
+    - "critique my writing voice"
+    - "find the AI tells in this"
+    - "make this sound less AI"
+    - "is this too AI-sounding"
+    - "help me sound more human"
+  keywords:
+    - slop
+    - ai-writing
+    - voice
+    - critique
+    - human
+
+dependencies:
+  tools: []
+  cli:
+    - python3
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
