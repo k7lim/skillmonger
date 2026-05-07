@@ -1,0 +1,34 @@
+# Configuration for skillmonger
+
+skill:
+  name: skillmonger
+  version: 0.1.0
+  created: 2025-02-13
+  updated: 2025-02-13
+
+triggers:
+  phrases:
+    - "skill status"
+    - "what was I working on"
+    - "skillmonger status"
+    - "start developing"
+    - "develop a skill"
+    - "ship skill"
+    - "deploy skill"
+    - "where did I leave off"
+    - "continue skill work"
+  keywords:
+    - skillmonger
+    - seeds
+    - sandbox
+    - ship
+    - deploy
+
+dependencies:
+  tools: []
+  cli:
+    - bash
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
