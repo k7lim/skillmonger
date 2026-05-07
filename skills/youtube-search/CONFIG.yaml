@@ -1,0 +1,47 @@
+skill:
+  name: youtube-search
+  version: 0.1.0
+  created: 2026-04-19
+  updated: 2026-04-19
+  author: kevin
+
+triggers:
+  phrases:
+    - "find youtube videos"
+    - "search youtube for"
+    - "find trailers for"
+    - "find educational videos"
+    - "youtube search"
+    - "find videos about"
+    - "best youtube videos for"
+    - "find conference talks about"
+    - "search for videos on"
+  keywords:
+    - youtube search
+    - find videos
+    - video quality
+    - trailer
+    - educational video
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - python3
+    - jq
+  pip:
+    - yt-dlp
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+  references:
+    - references/sp-filters.md
+    - references/youtube-urls.md
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0

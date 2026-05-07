@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""search-transcript - Search within a YouTube video transcript for specific terms.
+
+Usage:
+  search-transcript <query> [--input FILE|-] [--video VIDEO_ID]
+                             [--context 30] [--limit 10] [--offset 0]
+                             [--pretty]
+
+Examples:
+  search-transcript "ownership" --input transcript.json
+  get-transcript "rQ_J9WH6CGk" | search-transcript "ownership"
+  search-transcript "photosynthesis" --video "CMiPYHNNg28" --context 60
+"""
+import sys
+import json
+import re
+import time
+import argparse
+import subprocess
+import os
+
+def format_time(seconds):
+    """Format seconds as MM:SS or H:MM:SS."""
+    seconds = max(0, seconds)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+def error_envelope(message, code=1):
+    print(json.dumps({
+        "success": False,
+        "data": None,
+        "meta": {"error": message}
+    }), file=sys.stdout)
+    sys.exit(code)
+
+def expand_to_sentence_boundary(text, start_idx, end_idx):
+    """Expand indices to nearest sentence boundaries."""
+    # Expand start backwards to sentence boundary
+    while start_idx > 0 and text[start_idx - 1] not in ".!?\n":
+        start_idx -= 1
+    # Expand end forwards to sentence boundary
+    while end_idx < len(text) and text[end_idx] not in ".!?\n":
+        end_idx += 1
+    return start_idx, end_idx
+
+def main():
+    parser = argparse.ArgumentParser(description="Search within YouTube video transcript")
+    parser.add_argument("query", help="Search query (case-insensitive substring match)")
+    parser.add_argument("--input", "-i", help="Transcript JSON file (or - for stdin)")
+    parser.add_argument("--video", "-v", help="Video ID — fetches transcript if --input not given")
+    parser.add_argument("--context", "-c", type=int, default=30,
+                        help="Seconds of context around each match (default: 30)")
+    parser.add_argument("--limit", "-l", type=int, default=10,
+                        help="Max results to return (default: 10)")
+    parser.add_argument("--offset", type=int, default=0,
+                        help="Skip first N results (default: 0)")
+    parser.add_argument("--pretty", action="store_true",
+                        help="Human-readable output")
+
+    args = parser.parse_args()
+    start_time = time.time()
+
+    # Load transcript data
+    transcript_data = None
+
+    if args.input:
+        if args.input == "-":
+            raw = sys.stdin.read()
+        else:
+            if not os.path.isfile(args.input):
+                error_envelope(f"File not found: {args.input}", 1)
+            with open(args.input, "r", encoding="utf-8") as f:
+                raw = f.read()
+        try:
+            transcript_data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            error_envelope(f"Invalid JSON input: {e}", 1)
+    elif args.video:
+        # Fetch transcript via get-transcript
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        get_transcript = os.path.join(script_dir, "get-transcript")
+        try:
+            result = subprocess.run(
+                [get_transcript, args.video],
+                capture_output=True, text=True, timeout=60
+            )
+            if result.returncode != 0:
+                error_envelope(f"get-transcript failed: {result.stderr.strip()}", 2)
+            transcript_data = json.loads(result.stdout)
+        except subprocess.TimeoutExpired:
+            error_envelope("get-transcript timed out", 2)
+        except json.JSONDecodeError:
+            error_envelope("get-transcript returned invalid JSON", 2)
+    else:
+        # Try reading from stdin
+        if not sys.stdin.isatty():
+            raw = sys.stdin.read()
+            try:
+                transcript_data = json.loads(raw)
+            except json.JSONDecodeError as e:
+                error_envelope(f"Invalid JSON from stdin: {e}", 1)
+        else:
+            error_envelope("Provide --input FILE, --video VIDEO_ID, or pipe transcript JSON to stdin", 1)
+
+    # Extract segments from envelope or raw format
+    if "data" in transcript_data and "segments" in transcript_data.get("data", {}):
+        data = transcript_data["data"]
+        segments = data["segments"]
+        video_id = data.get("video_id", "unknown")
+        video_title = data.get("title", "Unknown")
+    elif "segments" in transcript_data:
+        segments = transcript_data["segments"]
+        video_id = transcript_data.get("video_id", "unknown")
+        video_title = transcript_data.get("title", "Unknown")
+    else:
+        error_envelope("Input JSON has no 'segments' field", 1)
+
+    if not segments:
+        error_envelope("Transcript has no segments", 1)
+
+    # Search: case-insensitive substring match
+    query_lower = args.query.lower()
+    matching_indices = []
+    for i, seg in enumerate(segments):
+        if query_lower in seg.get("text", "").lower():
+            matching_indices.append(i)
+
+    # Build matches with context window
+    matches = []
+    used_indices = set()
+
+    for idx in matching_indices:
+        if idx in used_indices:
+            continue
+
+        match_seg = segments[idx]
+        match_start = match_seg["start"]
+        match_end = match_seg["end"]
+
+        # Find context window segments
+        context_start = match_start - args.context
+        context_end = match_end + args.context
+
+        # Collect all segments in the context window
+        window_indices = []
+        for i, seg in enumerate(segments):
+            if seg["end"] >= context_start and seg["start"] <= context_end:
+                window_indices.append(i)
+
+        # Merge overlapping windows: mark all indices as used
+        # Also check if other matching indices fall within this window
+        merged_match_indices = [idx]
+        for other_idx in matching_indices:
+            if other_idx != idx and other_idx in window_indices:
+                merged_match_indices.append(other_idx)
+                used_indices.add(other_idx)
+        used_indices.add(idx)
+
+        # Compute merged time range
+        all_match_starts = [segments[i]["start"] for i in merged_match_indices]
+        all_match_ends = [segments[i]["end"] for i in merged_match_indices]
+        merged_start = min(all_match_starts) - args.context
+        merged_end = max(all_match_ends) + args.context
+
+        # Re-collect window with merged range
+        window_segments = [seg for seg in segments
+                           if seg["end"] >= merged_start and seg["start"] <= merged_end]
+
+        if not window_segments:
+            continue
+
+        actual_start = max(0, window_segments[0]["start"])
+        actual_end = window_segments[-1]["end"]
+
+        # Build text
+        match_text = " ".join(seg["text"] for seg in window_segments)
+        match_text = re.sub(r'\s+', ' ', match_text).strip()
+
+        # Context before/after the core match
+        before_segs = [seg for seg in window_segments if seg["end"] <= min(all_match_starts)]
+        after_segs = [seg for seg in window_segments if seg["start"] >= max(all_match_ends)]
+        context_before = " ".join(seg["text"] for seg in before_segs[-3:]) if before_segs else ""
+        context_after = " ".join(seg["text"] for seg in after_segs[:3]) if after_segs else ""
+
+        watch_url = f"https://www.youtube.com/watch?v={video_id}&t={int(actual_start)}"
+        download_section = f"*{format_time(actual_start)}-{format_time(actual_end)}"
+
+        matches.append({
+            "text": match_text,
+            "start": round(actual_start, 2),
+            "end": round(actual_end, 2),
+            "start_fmt": format_time(actual_start),
+            "end_fmt": format_time(actual_end),
+            "watch_url": watch_url,
+            "download_section": download_section,
+            "context_before": context_before,
+            "context_after": context_after
+        })
+
+    # Apply offset and limit
+    total = len(matches)
+    matches = matches[args.offset:args.offset + args.limit]
+
+    latency_ms = int((time.time() - start_time) * 1000)
+
+    envelope = {
+        "success": True,
+        "data": matches,
+        "meta": {
+            "query": args.query,
+            "video_id": video_id,
+            "video_title": video_title,
+            "total": total,
+            "offset": args.offset,
+            "limit": args.limit,
+            "latency_ms": latency_ms
+        }
+    }
+
+    if args.pretty:
+        print(json.dumps(envelope, indent=2))
+    else:
+        print(json.dumps(envelope))
+
+if __name__ == "__main__":
+    main()

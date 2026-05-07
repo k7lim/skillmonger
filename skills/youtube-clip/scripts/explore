@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""explore - Generate a self-contained HTML longform-explorer page for a YouTube video.
+
+Type: ACTUATOR (writes a file) — supports --dry-run
+
+Usage:
+  explore <video-id-or-url> [--deep-dive-json FILE] [--output FILE] [--dry-run] [--pretty]
+
+Examples:
+  explore "rQ_J9WH6CGk" --dry-run
+  explore "rQ_J9WH6CGk" -o /tmp/explore.html
+  explore "rQ_J9WH6CGk" --deep-dive-json deep-dive-output.json -o explore.html
+"""
+import sys
+import json
+import os
+import re
+import time
+import argparse
+import subprocess
+import html as html_lib
+
+def extract_video_id(input_str):
+    patterns = [
+        r'(?:v=|\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$',
+    ]
+    for pat in patterns:
+        m = re.search(pat, input_str)
+        if m:
+            return m.group(1)
+    return input_str
+
+def format_time(seconds):
+    seconds = max(0, seconds)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+def format_duration(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    parts = []
+    if h > 0:
+        parts.append(f"{h}h")
+    if m > 0:
+        parts.append(f"{m}m")
+    if s > 0 or not parts:
+        parts.append(f"{s}s")
+    return " ".join(parts)
+
+def error_envelope(message, code=1):
+    print(json.dumps({
+        "success": False,
+        "data": None,
+        "meta": {"error": message}
+    }), file=sys.stdout)
+    sys.exit(code)
+
+def get_video_metadata(video_id):
+    """Fetch video metadata via yt-dlp --dump-json."""
+    cmd = [
+        "python3", "-m", "yt_dlp",
+        "--dump-json", "--no-download", "--no-warnings",
+        f"https://www.youtube.com/watch?v={video_id}"
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return None
+        return json.loads(result.stdout)
+    except Exception:
+        return None
+
+def get_transcript_segments(video_id):
+    """Fetch transcript via get-transcript script."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    get_transcript = os.path.join(script_dir, "get-transcript")
+    try:
+        result = subprocess.run(
+            [get_transcript, video_id],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            return []
+        data = json.loads(result.stdout)
+        if data.get("success") and "data" in data:
+            return data["data"].get("segments", [])
+    except Exception:
+        pass
+    return []
+
+def heatmap_color(value, max_value):
+    """Return CSS color for heatmap value (0-1 scale)."""
+    if max_value == 0:
+        return "rgba(100,100,100,0.3)"
+    ratio = value / max_value
+    if ratio > 0.8:
+        return f"rgba(255, 235, 59, {0.4 + ratio * 0.5})"  # yellow/bright
+    elif ratio > 0.5:
+        return f"rgba(76, 175, 80, {0.3 + ratio * 0.5})"   # green
+    elif ratio > 0.2:
+        return f"rgba(76, 175, 80, {0.2 + ratio * 0.3})"   # dim green
+    else:
+        return f"rgba(100, 100, 100, {0.1 + ratio * 0.3})"  # dim
+
+def generate_html(video_id, title, channel, duration, view_count, upload_date,
+                  thumbnail_url, heatmap, chapters, segments):
+    """Generate self-contained HTML explorer page."""
+    esc = html_lib.escape
+
+    # Prepare heatmap gradient
+    heatmap_gradient = ""
+    heatmap_html = ""
+    if heatmap and len(heatmap) > 0:
+        max_val = max(h.get("value", 0) for h in heatmap)
+        # Build CSS gradient stops
+        stops = []
+        for i, point in enumerate(heatmap):
+            pct = (i / max(len(heatmap) - 1, 1)) * 100
+            color = heatmap_color(point.get("value", 0), max_val)
+            stops.append(f"{color} {pct:.1f}%")
+        heatmap_gradient = f"linear-gradient(to right, {', '.join(stops)})"
+
+        # Build clickable heatmap segments
+        heatmap_segments = []
+        for i, point in enumerate(heatmap):
+            start_sec = point.get("start_time", (i / len(heatmap)) * duration) if duration else 0
+            width_pct = 100.0 / len(heatmap)
+            t_int = int(start_sec)
+            url = f"https://www.youtube.com/watch?v={video_id}&t={t_int}"
+            val = point.get("value", 0)
+            tooltip = f"{format_time(start_sec)} (retention: {val:.0f})" if max_val > 0 else format_time(start_sec)
+            heatmap_segments.append(
+                f'<a href="{url}" title="{esc(tooltip)}" '
+                f'style="display:inline-block;width:{width_pct:.2f}%;height:100%"></a>'
+            )
+        heatmap_html = "".join(heatmap_segments)
+
+    # Heatmap section
+    heatmap_section = ""
+    if heatmap_gradient:
+        heatmap_section = f'''
+    <div class="section">
+      <h2>Audience Retention Heatmap</h2>
+      <div class="heatmap-bar" style="background:{heatmap_gradient}">
+        {heatmap_html}
+      </div>
+      <div class="heatmap-labels">
+        <span>0:00</span>
+        <span>{format_time(duration) if duration else ''}</span>
+      </div>
+    </div>'''
+
+    # Chapters section
+    chapters_html = ""
+    if chapters:
+        rows = []
+        max_heat = 0
+        if heatmap:
+            max_heat = max(h.get("value", 0) for h in heatmap)
+
+        for ch in chapters:
+            ch_start = ch.get("start_time", 0)
+            ch_end = ch.get("end_time", ch_start)
+            ch_title = ch.get("title", "Untitled")
+            t_int = int(ch_start)
+            url = f"https://www.youtube.com/watch?v={video_id}&t={t_int}"
+
+            # Compute average heatmap intensity for this chapter
+            bg_color = "transparent"
+            if heatmap and max_heat > 0 and duration > 0:
+                relevant = [h for h in heatmap
+                            if h.get("start_time", 0) >= ch_start
+                            and h.get("start_time", 0) < ch_end]
+                if relevant:
+                    avg_val = sum(h.get("value", 0) for h in relevant) / len(relevant)
+                    bg_color = heatmap_color(avg_val, max_heat)
+
+            rows.append(
+                f'<tr style="background:{bg_color}">'
+                f'<td><a href="{url}">{esc(format_time(ch_start))}</a></td>'
+                f'<td><a href="{url}">{esc(ch_title)}</a></td>'
+                f'<td>{esc(format_time(ch_end - ch_start) if ch_end > ch_start else "")}</td>'
+                f'</tr>'
+            )
+
+        chapters_html = f'''
+    <div class="section">
+      <h2>Chapters ({len(chapters)})</h2>
+      <table class="chapters-table">
+        <thead><tr><th>Time</th><th>Title</th><th>Duration</th></tr></thead>
+        <tbody>{"".join(rows)}</tbody>
+      </table>
+    </div>'''
+
+    # Transcript section
+    transcript_html = ""
+    if segments:
+        lines = []
+        max_heat_val = max((h.get("value", 0) for h in heatmap), default=0) if heatmap else 0
+        for seg in segments:
+            t = seg.get("start", 0)
+            t_int = int(t)
+            text = seg.get("text", "")
+            url = f"https://www.youtube.com/watch?v={video_id}&t={t_int}"
+
+            # Left border color from heatmap
+            border_color = "#333"
+            if heatmap and max_heat_val > 0 and duration > 0:
+                # Find closest heatmap point
+                seg_ratio = t / duration
+                heatmap_idx = min(int(seg_ratio * len(heatmap)), len(heatmap) - 1)
+                border_color = heatmap_color(heatmap[heatmap_idx].get("value", 0), max_heat_val)
+
+            lines.append(
+                f'<div class="transcript-line" style="border-left:3px solid {border_color}">'
+                f'<a href="{url}" class="timestamp">{esc(format_time(t))}</a>'
+                f'<span class="text">{esc(text)}</span>'
+                f'</div>'
+            )
+        transcript_html = f'''
+    <div class="section">
+      <h2>Transcript ({len(segments)} segments)</h2>
+      <div class="transcript-panel">{"".join(lines)}</div>
+    </div>'''
+
+    # Format metadata
+    views_fmt = f"{view_count:,}" if view_count else "N/A"
+    duration_fmt = format_duration(duration) if duration else "N/A"
+    thumb_html = f'<img src="{esc(thumbnail_url)}" alt="Thumbnail" class="thumbnail">' if thumbnail_url else ""
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{esc(title)} - Longform Explorer</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0f0f0f; color: #e0e0e0; line-height: 1.6; padding: 20px; max-width: 1000px; margin: 0 auto; }}
+  a {{ color: #3ea6ff; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  .header {{ display: flex; gap: 20px; margin-bottom: 24px; align-items: flex-start; }}
+  .thumbnail {{ width: 320px; border-radius: 8px; flex-shrink: 0; }}
+  .meta {{ flex: 1; }}
+  .meta h1 {{ font-size: 1.4em; margin-bottom: 8px; color: #fff; }}
+  .meta-details {{ color: #aaa; font-size: 0.9em; }}
+  .meta-details span {{ margin-right: 16px; }}
+  .section {{ margin-bottom: 24px; }}
+  .section h2 {{ font-size: 1.1em; color: #fff; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 6px; }}
+  .heatmap-bar {{ height: 32px; border-radius: 4px; display: flex; overflow: hidden; cursor: pointer; }}
+  .heatmap-bar a {{ opacity: 0; }}
+  .heatmap-bar a:hover {{ opacity: 0.3; background: white; }}
+  .heatmap-labels {{ display: flex; justify-content: space-between; font-size: 0.8em; color: #888; margin-top: 4px; }}
+  .chapters-table {{ width: 100%; border-collapse: collapse; }}
+  .chapters-table th, .chapters-table td {{ text-align: left; padding: 8px 12px; border-bottom: 1px solid #222; }}
+  .chapters-table th {{ color: #888; font-size: 0.85em; text-transform: uppercase; }}
+  .chapters-table tr:hover {{ background: rgba(255,255,255,0.05) !important; }}
+  .transcript-panel {{ max-height: 600px; overflow-y: auto; background: #1a1a1a; border-radius: 8px; padding: 12px; }}
+  .transcript-line {{ padding: 6px 10px; margin-bottom: 2px; display: flex; gap: 12px; }}
+  .transcript-line:hover {{ background: rgba(255,255,255,0.03); }}
+  .timestamp {{ color: #3ea6ff; font-size: 0.85em; min-width: 55px; flex-shrink: 0; font-family: monospace; }}
+  .text {{ font-size: 0.9em; }}
+  @media (max-width: 600px) {{
+    .header {{ flex-direction: column; }}
+    .thumbnail {{ width: 100%; }}
+  }}
+</style>
+</head>
+<body>
+  <div class="header">
+    {thumb_html}
+    <div class="meta">
+      <h1><a href="https://www.youtube.com/watch?v={esc(video_id)}">{esc(title)}</a></h1>
+      <div class="meta-details">
+        <span>{esc(channel or 'Unknown channel')}</span>
+        <span>{esc(duration_fmt)}</span>
+        <span>{esc(views_fmt)} views</span>
+        <span>{esc(upload_date or '')}</span>
+      </div>
+    </div>
+  </div>
+  {heatmap_section}
+  {chapters_html}
+  {transcript_html}
+</body>
+</html>'''
+    return html
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate longform-explorer HTML page")
+    parser.add_argument("video", help="Video ID or URL")
+    parser.add_argument("--deep-dive-json", help="Pre-fetched metadata JSON file")
+    parser.add_argument("--output", "-o", help="Output HTML file path")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be generated without writing")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+
+    args = parser.parse_args()
+    start_time = time.time()
+
+    video_id = extract_video_id(args.video)
+    output_path = args.output or f"/tmp/explore-{video_id}.html"
+
+    title = "Unknown"
+    channel = ""
+    duration = 0
+    view_count = 0
+    upload_date = ""
+    thumbnail_url = ""
+    heatmap = []
+    chapters = []
+    segments = []
+
+    # Load metadata
+    if args.deep_dive_json:
+        if not os.path.isfile(args.deep_dive_json):
+            error_envelope(f"File not found: {args.deep_dive_json}", 1)
+        with open(args.deep_dive_json, "r", encoding="utf-8") as f:
+            dd = json.load(f)
+
+        # Handle envelope format
+        data = dd.get("data", dd)
+        title = data.get("title", title)
+        channel = data.get("channel", data.get("uploader", channel))
+        duration = data.get("duration", duration)
+        view_count = data.get("view_count", view_count)
+        upload_date = data.get("upload_date", upload_date)
+        thumbnail_url = data.get("thumbnail", data.get("thumbnails", [{}])[-1].get("url", ""))
+        heatmap = data.get("heatmap", [])
+        chapters = data.get("chapters", [])
+        # Transcript may be included
+        segments = data.get("segments", data.get("transcript", {}).get("segments", []))
+    else:
+        # Fetch metadata via yt-dlp
+        meta = get_video_metadata(video_id)
+        if meta:
+            title = meta.get("title", title)
+            channel = meta.get("channel", meta.get("uploader", channel))
+            duration = meta.get("duration", duration)
+            view_count = meta.get("view_count", view_count)
+            upload_date = meta.get("upload_date", upload_date)
+            thumbs = meta.get("thumbnails", [])
+            thumbnail_url = thumbs[-1].get("url", "") if thumbs else ""
+
+            # Extract heatmap from yt-dlp metadata
+            raw_heatmap = meta.get("heatmap", None)
+            if raw_heatmap and isinstance(raw_heatmap, list):
+                # yt-dlp returns heatmap as list of dicts or list of lists
+                for entry in raw_heatmap:
+                    if isinstance(entry, dict):
+                        heatmap.append(entry)
+                    elif isinstance(entry, list):
+                        # [start_time, end_time, value]
+                        heatmap.append({
+                            "start_time": entry[0],
+                            "end_time": entry[1] if len(entry) > 1 else entry[0],
+                            "value": entry[2] if len(entry) > 2 else entry[1]
+                        })
+
+            # Extract chapters
+            raw_chapters = meta.get("chapters", None)
+            if raw_chapters and isinstance(raw_chapters, list):
+                chapters = raw_chapters
+
+    # Fetch transcript if not already loaded
+    if not segments:
+        segments = get_transcript_segments(video_id)
+
+    # Dry run
+    if args.dry_run:
+        est_size = len(title) * 2 + len(segments) * 200 + len(chapters) * 100 + 5000
+        envelope = {
+            "success": True,
+            "data": {
+                "video_id": video_id,
+                "title": title,
+                "chapter_count": len(chapters),
+                "heatmap_points": len(heatmap),
+                "transcript_segments": len(segments),
+                "estimated_file_size_kb": round(est_size / 1024, 1),
+                "output_path": output_path
+            },
+            "meta": {
+                "source": "dry-run",
+                "dry_run": True,
+                "latency_ms": int((time.time() - start_time) * 1000)
+            }
+        }
+        if args.pretty:
+            print(json.dumps(envelope, indent=2))
+        else:
+            print(json.dumps(envelope))
+        return
+
+    # Assign end_time to chapters if missing
+    for i, ch in enumerate(chapters):
+        if "end_time" not in ch:
+            if i + 1 < len(chapters):
+                ch["end_time"] = chapters[i + 1].get("start_time", ch.get("start_time", 0))
+            else:
+                ch["end_time"] = duration
+
+    # Assign start_time to heatmap points if missing
+    if heatmap and "start_time" not in heatmap[0] and duration > 0:
+        for i, h in enumerate(heatmap):
+            h["start_time"] = (i / len(heatmap)) * duration
+
+    # Generate HTML
+    html_content = generate_html(
+        video_id=video_id,
+        title=title,
+        channel=channel,
+        duration=duration,
+        view_count=view_count,
+        upload_date=upload_date,
+        thumbnail_url=thumbnail_url,
+        heatmap=heatmap,
+        chapters=chapters,
+        segments=segments
+    )
+
+    # Write file
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+
+    envelope = {
+        "success": True,
+        "data": {
+            "output_path": os.path.abspath(output_path),
+            "video_id": video_id,
+            "title": title,
+            "chapter_count": len(chapters),
+            "heatmap_points": len(heatmap),
+            "transcript_segments": len(segments)
+        },
+        "meta": {
+            "source": "generated",
+            "dry_run": False,
+            "latency_ms": latency_ms
+        }
+    }
+
+    if args.pretty:
+        print(json.dumps(envelope, indent=2))
+    else:
+        print(json.dumps(envelope))
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""
+search - Search YouTube via yt-dlp using youtube.com/results URL pattern.
+
+Usage: scripts/search <query> [--limit 10] [--offset 0]
+                               [--filter newest|views|rating]
+                               [--date hour|today|week|month|year]
+                               [--type video|playlist|channel|short|long]
+                               [--subtitles-only]
+                               [--channel-url URL]
+                               [--pretty]
+
+Examples:
+  scripts/search "rust tutorial" --limit 5
+  scripts/search "dune trailer" --filter views --type video
+  scripts/search "photosynthesis" --subtitles-only --date year
+  scripts/search "WebAssembly" --channel-url "https://www.youtube.com/@GoogleChromeDevelopers"
+"""
+import sys
+import json
+import subprocess
+import time
+import argparse
+import urllib.parse
+
+# sp filter codes from references/sp-filters.md
+SP_DATE = {
+    "hour":  "EgIIAQ%3D%3D",
+    "today": "EgIIAg%3D%3D",
+    "week":  "EgIIAw%3D%3D",
+    "month": "EgIIBA%3D%3D",
+    "year":  "EgIIBQ%3D%3D",
+}
+
+SP_TYPE = {
+    "video":    "EgIQAQ%3D%3D",
+    "playlist": "EgIQAw%3D%3D",
+    "channel":  "EgIQAg%3D%3D",
+    "short":    "EgQQARgB",
+    "long":     "EgQQARgC",
+}
+
+SP_SORT = {
+    "newest": "CAISAhAB",
+    "views":  "CAMSAhAB",
+    "rating": "CAESAhAB",
+}
+
+SP_FEATURE = {
+    "subtitles": "EgIoAQ%3D%3D",
+}
+
+
+def build_envelope(success, data, meta):
+    return {"success": success, "data": data, "meta": meta}
+
+
+def normalize_entry(entry):
+    """Extract our schema fields from yt-dlp flat-playlist entry."""
+    vid = entry.get("id", "")
+    title = entry.get("title", "")
+    channel = entry.get("channel") or entry.get("uploader") or ""
+    channel_id = entry.get("channel_id") or entry.get("uploader_id") or ""
+    duration = entry.get("duration")
+    if duration is not None:
+        duration = int(duration)
+    view_count = entry.get("view_count")
+    upload_date = entry.get("upload_date") or ""
+    if upload_date and len(upload_date) == 8:
+        upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+    url = entry.get("url") or entry.get("webpage_url") or ""
+    if vid and not url:
+        url = f"https://www.youtube.com/watch?v={vid}"
+    elif url and not url.startswith("http"):
+        url = f"https://www.youtube.com/watch?v={vid}"
+    thumbnail = entry.get("thumbnail") or entry.get("thumbnails", [{}])[-1].get("url", "") if entry.get("thumbnails") else ""
+    if not thumbnail and vid:
+        thumbnail = f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
+    desc = entry.get("description") or ""
+    snippet = desc[:200] if desc else ""
+
+    return {
+        "id": vid,
+        "title": title,
+        "channel": channel,
+        "channel_id": channel_id,
+        "duration": duration,
+        "view_count": view_count,
+        "upload_date": upload_date,
+        "url": url,
+        "thumbnail": thumbnail,
+        "description_snippet": snippet,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Search YouTube via yt-dlp")
+    parser.add_argument("query", help="Search query")
+    parser.add_argument("--limit", type=int, default=10, help="Max results (default 10)")
+    parser.add_argument("--offset", type=int, default=0, help="Skip first N results (default 0)")
+    parser.add_argument("--filter", choices=["newest", "views", "rating"], help="Sort order")
+    parser.add_argument("--date", choices=["hour", "today", "week", "month", "year"], help="Upload date filter")
+    parser.add_argument("--type", choices=["video", "playlist", "channel", "short", "long"], help="Content type filter")
+    parser.add_argument("--subtitles-only", action="store_true", help="Only results with subtitles")
+    parser.add_argument("--channel-url", help="Search within a specific channel")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    parser.add_argument("--help-examples", action="store_true", help="Show usage examples")
+
+    args = parser.parse_args()
+
+    if args.help_examples:
+        print(__doc__)
+        sys.exit(0)
+
+    start = time.time()
+    encoded_query = urllib.parse.quote(args.query)
+
+    # Build sp parameter
+    sp_parts = []
+    if args.filter and args.filter in SP_SORT:
+        sp_parts.append(SP_SORT[args.filter])
+    if args.date and args.date in SP_DATE:
+        sp_parts.append(SP_DATE[args.date])
+    if args.type and args.type in SP_TYPE:
+        sp_parts.append(SP_TYPE[args.type])
+    if args.subtitles_only:
+        sp_parts.append(SP_FEATURE["subtitles"])
+
+    # Build URL
+    if args.channel_url:
+        channel_url = args.channel_url.rstrip("/")
+        url = f"{channel_url}/search?query={encoded_query}"
+    else:
+        url = f"https://www.youtube.com/results?search_query={encoded_query}"
+        # Use the first sp filter (combining is unreliable)
+        if sp_parts:
+            url += f"&sp={sp_parts[0]}"
+
+    # Build yt-dlp command
+    cmd = [
+        "python3", "-m", "yt_dlp",
+        url,
+        "-J", "--flat-playlist",
+        "--extractor-args", "youtubetab:approximate_date",
+        "--playlist-start", str(args.offset + 1),
+        "--playlist-end", str(args.offset + args.limit),
+        "--no-warnings",
+    ]
+
+    # Rate limiting for bulk requests
+    if args.limit > 5:
+        cmd += ["--sleep-requests", "1"]
+
+    filters_applied = {}
+    if args.filter:
+        filters_applied["sort"] = args.filter
+    if args.date:
+        filters_applied["date"] = args.date
+    if args.type:
+        filters_applied["type"] = args.type
+    if args.subtitles_only:
+        filters_applied["subtitles_only"] = True
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except FileNotFoundError:
+        latency = int((time.time() - start) * 1000)
+        envelope = build_envelope(False, [], {
+            "source": "yt-dlp", "query": args.query,
+            "filters": filters_applied,
+            "error": "python3 not found. Run scripts/check-prereqs.sh to verify dependencies.",
+            "latency_ms": latency
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(3)
+    except subprocess.TimeoutExpired:
+        latency = int((time.time() - start) * 1000)
+        envelope = build_envelope(False, [], {
+            "source": "yt-dlp", "query": args.query,
+            "filters": filters_applied,
+            "error": "upstream timeout (60s)", "latency_ms": latency
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    latency = int((time.time() - start) * 1000)
+
+    if result.returncode != 0 and not result.stdout.strip():
+        envelope = build_envelope(False, [], {
+            "source": "yt-dlp", "query": args.query,
+            "filters": filters_applied,
+            "error": result.stderr.strip()[:500] or f"yt-dlp exit code {result.returncode}",
+            "latency_ms": latency
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    # Parse yt-dlp output
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        envelope = build_envelope(False, [], {
+            "source": "yt-dlp", "query": args.query,
+            "filters": filters_applied,
+            "error": "failed to parse yt-dlp JSON output",
+            "latency_ms": latency
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    # Extract entries
+    entries = raw.get("entries", []) or []
+    data = [normalize_entry(e) for e in entries if e]
+
+    total = raw.get("playlist_count") or len(entries)
+
+    envelope = build_envelope(True, data, {
+        "source": "yt-dlp",
+        "query": args.query,
+        "filters": filters_applied,
+        "total": total,
+        "offset": args.offset,
+        "limit": args.limit,
+        "latency_ms": latency
+    })
+
+    print(json.dumps(envelope, indent=2 if args.pretty else None))
+
+
+if __name__ == "__main__":
+    main()

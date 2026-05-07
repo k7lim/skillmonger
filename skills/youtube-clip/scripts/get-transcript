@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""get-transcript - Fetch and parse YouTube video transcript into sentence-level segments.
+
+Usage:
+  get-transcript <video-id-or-url> [--lang LANG] [--prefer manual|auto] [--pretty]
+
+Examples:
+  get-transcript "rQ_J9WH6CGk"
+  get-transcript "https://www.youtube.com/watch?v=rQ_J9WH6CGk" --lang es
+  get-transcript "rQ_J9WH6CGk" --prefer manual --pretty
+"""
+import sys
+import json
+import os
+import re
+import glob
+import time
+import argparse
+import subprocess
+import tempfile
+
+def extract_video_id(input_str):
+    """Extract video ID from URL or return as-is if already an ID."""
+    patterns = [
+        r'(?:v=|\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$',
+    ]
+    for pat in patterns:
+        m = re.search(pat, input_str)
+        if m:
+            return m.group(1)
+    return input_str
+
+def format_time(seconds):
+    """Format seconds as MM:SS or H:MM:SS."""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+def merge_segments(events):
+    """Merge word-level json3 events into sentence-level chunks.
+
+    Strategy:
+    - Accumulate words into a buffer
+    - Break on: sentence-ending punctuation, timing gaps > 1s, or chunk duration > 15s
+    - Return list of {start, end, text}
+    """
+    if not events:
+        return []
+
+    segments = []
+    current_text = []
+    current_start = None
+    current_end = None
+    last_end_ms = None
+    has_punctuation = False
+
+    # First pass: check if transcript has meaningful punctuation
+    all_text = ""
+    for event in events:
+        if "segs" in event:
+            for seg in event["segs"]:
+                all_text += seg.get("utf8", "")
+    punct_count = sum(1 for c in all_text if c in ".!?")
+    word_count = len(all_text.split())
+    has_punctuation = word_count > 0 and (punct_count / max(word_count, 1)) > 0.02
+
+    for event in events:
+        t_start_ms = event.get("tStartMs", 0)
+        d_duration_ms = event.get("dDurationMs", 0)
+        segs = event.get("segs", [])
+
+        for seg in segs:
+            word = seg.get("utf8", "")
+            if not word or word == "\n":
+                continue
+
+            t_offset_ms = seg.get("tOffsetMs", 0)
+            word_start_ms = t_start_ms + t_offset_ms
+            word_end_ms = word_start_ms + d_duration_ms
+
+            # Initialize chunk start
+            if current_start is None:
+                current_start = word_start_ms / 1000.0
+
+            # Check for timing gap > 1 second from last word
+            timing_gap = False
+            if last_end_ms is not None:
+                gap = word_start_ms - last_end_ms
+                if gap > 1000:
+                    timing_gap = True
+
+            # Check chunk duration > 15 seconds
+            chunk_duration = (word_start_ms / 1000.0) - current_start
+            too_long = chunk_duration > 15.0
+
+            # Check sentence boundary (only if transcript has punctuation)
+            sentence_end = False
+            if has_punctuation and current_text:
+                last_word = current_text[-1].rstrip()
+                if last_word and last_word[-1] in ".!?":
+                    sentence_end = True
+
+            # Break conditions
+            should_break = (timing_gap or too_long or sentence_end) and current_text
+
+            if should_break:
+                text = " ".join(current_text).strip()
+                text = re.sub(r'\s+', ' ', text)
+                if text:
+                    segments.append({
+                        "start": round(current_start, 2),
+                        "end": round(current_end, 2),
+                        "text": text
+                    })
+                current_text = []
+                current_start = word_start_ms / 1000.0
+
+            current_text.append(word.strip())
+            current_end = word_end_ms / 1000.0
+            last_end_ms = word_end_ms
+
+    # Flush remaining
+    if current_text:
+        text = " ".join(current_text).strip()
+        text = re.sub(r'\s+', ' ', text)
+        if text:
+            segments.append({
+                "start": round(current_start, 2),
+                "end": round(current_end, 2),
+                "text": text
+            })
+
+    return segments
+
+def error_envelope(message, code=1):
+    """Print error envelope and exit."""
+    print(json.dumps({
+        "success": False,
+        "data": None,
+        "meta": {"error": message}
+    }), file=sys.stdout)
+    sys.exit(code)
+
+def main():
+    parser = argparse.ArgumentParser(description="Fetch YouTube video transcript")
+    parser.add_argument("video", help="Video ID or URL")
+    parser.add_argument("--lang", default="en", help="Subtitle language (default: en)")
+    parser.add_argument("--prefer", choices=["manual", "auto"], default="manual",
+                        help="Prefer manual or auto subtitles (default: manual)")
+    parser.add_argument("--pretty", action="store_true",
+                        help="Human-readable output (truncated)")
+
+    args = parser.parse_args()
+
+    video_id = extract_video_id(args.video)
+    start_time = time.time()
+
+    # Create temp directory for subtitle files
+    tmpdir = tempfile.mkdtemp(prefix="yt-clip-")
+    output_template = os.path.join(tmpdir, video_id)
+
+    try:
+        # Use regex pattern for language matching (en matches en, en-US, en-GB, etc.)
+        lang_pattern = f"{args.lang}.*" if not args.lang.endswith("*") else args.lang
+
+        cmd = [
+            "python3", "-m", "yt_dlp",
+            "--write-auto-subs", "--write-subs",
+            "--sub-lang", lang_pattern,
+            "--sub-format", "json3",
+            "--skip-download",
+            "--no-warnings",
+            "-o", output_template,
+            f"https://www.youtube.com/watch?v={video_id}"
+        ]
+
+        # Also fetch video title
+        info_cmd = [
+            "python3", "-m", "yt_dlp",
+            "--dump-json", "--no-download", "--no-warnings",
+            f"https://www.youtube.com/watch?v={video_id}"
+        ]
+
+        # Run subtitle download
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_envelope(f"yt-dlp subtitle download failed: {result.stderr.strip()}", 2)
+
+        # Get video info for title
+        title = "Unknown"
+        try:
+            info_result = subprocess.run(info_cmd, capture_output=True, text=True, timeout=30)
+            if info_result.returncode == 0:
+                info = json.loads(info_result.stdout)
+                title = info.get("title", "Unknown")
+        except Exception:
+            pass
+
+        # Find subtitle files - prefer manual over auto
+        sub_files = glob.glob(os.path.join(tmpdir, f"{video_id}*.json3"))
+        if not sub_files:
+            error_envelope(f"No subtitles found for video {video_id} in language '{args.lang}'", 1)
+
+        # Separate manual and auto subtitle files
+        manual_files = [f for f in sub_files if ".auto." not in os.path.basename(f)]
+        auto_files = [f for f in sub_files if ".auto." in os.path.basename(f)]
+
+        if args.prefer == "manual" and manual_files:
+            chosen_file = manual_files[0]
+            source = "manual"
+        elif auto_files:
+            chosen_file = auto_files[0]
+            source = "auto"
+        elif manual_files:
+            chosen_file = manual_files[0]
+            source = "manual"
+        else:
+            error_envelope(f"No usable subtitle file found for {video_id}", 1)
+
+        # Parse json3
+        with open(chosen_file, "r", encoding="utf-8") as f:
+            json3_data = json.load(f)
+
+        events = json3_data.get("events", [])
+        segments = merge_segments(events)
+
+        if not segments:
+            error_envelope("Transcript parsed but no segments produced", 1)
+
+        # Build full text
+        full_text = " ".join(seg["text"] for seg in segments)
+
+        # Detect actual language from filename
+        lang_match = re.search(r'\.([a-z]{2}(?:-[a-zA-Z]+)?)\.\w+\.json3$', chosen_file)
+        detected_lang = lang_match.group(1) if lang_match else args.lang
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        envelope = {
+            "success": True,
+            "data": {
+                "video_id": video_id,
+                "title": title,
+                "language": detected_lang,
+                "source": source,
+                "segments": segments,
+                "full_text": full_text
+            },
+            "meta": {
+                "source": "yt-dlp",
+                "video_id": video_id,
+                "segment_count": len(segments),
+                "schema_version": 1,
+                "latency_ms": latency_ms
+            }
+        }
+
+        if args.pretty:
+            # Truncated human-readable output
+            display_segs = segments[:5]
+            if len(segments) > 10:
+                display_segs.append({"text": f"... ({len(segments) - 10} more segments) ..."})
+                display_segs.extend(segments[-5:])
+            elif len(segments) > 5:
+                display_segs = segments
+            envelope["data"]["segments"] = display_segs
+            envelope["data"]["full_text"] = full_text[:500] + ("..." if len(full_text) > 500 else "")
+            print(json.dumps(envelope, indent=2))
+        else:
+            print(json.dumps(envelope))
+
+    finally:
+        # Clean up temp files
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+if __name__ == "__main__":
+    main()

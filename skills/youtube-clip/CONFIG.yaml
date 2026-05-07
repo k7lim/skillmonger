@@ -1,0 +1,58 @@
+# Configuration for youtube-clip
+
+skill:
+  name: youtube-clip
+  version: 0.1.0
+  created: 2026-04-19
+  updated: 2026-04-19
+  author: kevin
+
+description: >
+  Use this skill when the user wants to search inside a YouTube video transcript,
+  find where a topic is discussed, get timestamps for specific moments, extract
+  clips from long-form content, or generate a navigable explorer page for a long
+  video. Also use when asked to get or download a transcript, find quotes in a
+  video, or build a playlist of specific segments from one or more videos.
+
+triggers:
+  phrases:
+    - "find where they discuss"
+    - "search this video transcript"
+    - "find the part about"
+    - "timestamp for this topic in the video"
+    - "clip from youtube video"
+    - "explore this long video"
+    - "navigate long video chapters"
+    - "create a longform explorer"
+    - "search inside youtube video"
+    - "get transcript from youtube"
+    - "what time do they talk about"
+    - "find the quote about"
+  keywords:
+    - transcript search
+    - timestamp
+    - clip
+    - explore video
+    - heatmap
+    - chapters
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - python3
+    - jq
+  pip:
+    - yt-dlp
+  optional_pip:
+    - yt-fts
+
+loading:
+  primary: SKILL.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0

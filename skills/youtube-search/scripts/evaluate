@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""
+evaluate - Score youtube-search or deep-dive output quality (1-5).
+
+Usage: scripts/evaluate [FILE]
+       cat results.json | scripts/evaluate
+
+Reads a JSON envelope (from search or deep-dive) from file or stdin.
+Outputs quality score 1-5 with checks.
+"""
+import sys
+import json
+from datetime import datetime, timezone
+
+def days_since(date_str):
+    """Days since YYYY-MM-DD date string."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).days
+    except ValueError:
+        return None
+
+
+def score_single_video(v):
+    """Score a single video dict. Returns (score_points, max_points, details)."""
+    points = 0
+    max_pts = 0
+    details = {}
+
+    # Views/day
+    age = days_since(v.get("upload_date"))
+    views = v.get("view_count")
+    if views is not None and age and age > 0:
+        vpd = views / age
+        max_pts += 2
+        if vpd > 1000:
+            points += 2
+            details["views_per_day"] = f"{vpd:.0f} (excellent)"
+        elif vpd > 100:
+            points += 1
+            details["views_per_day"] = f"{vpd:.0f} (good)"
+        else:
+            details["views_per_day"] = f"{vpd:.0f} (low)"
+    elif views is not None:
+        max_pts += 2
+        if views > 100000:
+            points += 2
+            details["view_count"] = f"{views} (high)"
+        elif views > 10000:
+            points += 1
+            details["view_count"] = f"{views} (moderate)"
+        else:
+            details["view_count"] = f"{views} (low)"
+
+    # Like ratio (deep-dive only)
+    likes = v.get("like_count")
+    if likes is not None and views and views > 0:
+        ratio = likes / views
+        max_pts += 1
+        if ratio > 0.03:
+            points += 1
+            details["like_ratio"] = f"{ratio:.1%} (strong)"
+        else:
+            details["like_ratio"] = f"{ratio:.1%}"
+
+    # Channel followers (deep-dive only)
+    followers = v.get("channel_followers")
+    if followers is not None:
+        max_pts += 1
+        if followers > 10000:
+            points += 1
+            details["channel_followers"] = followers
+
+    # Chapters (deep-dive only)
+    chapters = v.get("chapters")
+    if chapters is not None:
+        max_pts += 1
+        if len(chapters) > 0:
+            points += 1
+            details["has_chapters"] = True
+        else:
+            details["has_chapters"] = False
+
+    # Captions
+    captions = v.get("captions")
+    if captions is not None:
+        max_pts += 1
+        if captions.get("manual"):
+            points += 1
+            details["manual_captions"] = True
+        else:
+            details["manual_captions"] = False
+
+    # Heatmap (deep-dive only)
+    heatmap = v.get("heatmap")
+    if heatmap:
+        max_pts += 1
+        peak = max(h.get("value", 0) for h in heatmap)
+        if peak > 0.5:
+            points += 1
+            details["heatmap_peak"] = f"{peak:.3f} (high retention)"
+        else:
+            details["heatmap_peak"] = f"{peak:.3f}"
+
+    return points, max_pts, details
+
+
+def main():
+    # Handle --help explicitly
+    if len(sys.argv) >= 2 and sys.argv[1] in ("--help", "-h"):
+        print(__doc__.strip())
+        sys.exit(0)
+
+    # Read input from file arg or stdin
+    if len(sys.argv) >= 2:
+        filepath = sys.argv[1]
+        try:
+            with open(filepath) as f:
+                raw = f.read()
+        except FileNotFoundError:
+            print(json.dumps({
+                "success": False,
+                "data": {"outcome": 1, "note": f"File not found: {filepath}. Expected a JSON file from search or deep-dive output.", "checks": {}},
+                "meta": {"source": "script"}
+            }), file=sys.stderr)
+            sys.exit(1)
+    else:
+        if sys.stdin.isatty():
+            print("Error: No input provided. Pass a JSON file or pipe search/deep-dive output.", file=sys.stderr)
+            print("Usage: scripts/evaluate [FILE]", file=sys.stderr)
+            print("       cat results.json | scripts/evaluate", file=sys.stderr)
+            sys.exit(1)
+        raw = sys.stdin.read()
+
+    try:
+        envelope = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(json.dumps({
+            "success": False,
+            "data": {"outcome": 1, "note": f"Invalid JSON input: {e}. Expected output from scripts/search or scripts/deep-dive.", "checks": {}},
+            "meta": {"source": "script"}
+        }))
+        sys.exit(1)
+
+    # Determine input type: envelope or raw data
+    if isinstance(envelope, dict) and "data" in envelope:
+        data = envelope["data"]
+        input_success = envelope.get("success", True)
+    else:
+        data = envelope
+        input_success = True
+
+    if not input_success:
+        result = {
+            "success": True,
+            "data": {"outcome": 1, "note": "Input envelope reports failure", "checks": {"input_success": False}},
+            "meta": {"source": "script"}
+        }
+        print(json.dumps(result))
+        return
+
+    # Handle search results (array) vs deep-dive (single dict)
+    if isinstance(data, list):
+        videos = data
+    elif isinstance(data, dict) and "id" in data:
+        videos = [data]
+    else:
+        result = {
+            "success": True,
+            "data": {"outcome": 1, "note": "No scoreable video data found", "checks": {}},
+            "meta": {"source": "script"}
+        }
+        print(json.dumps(result))
+        return
+
+    if not videos:
+        result = {
+            "success": True,
+            "data": {"outcome": 1, "note": "Empty results", "checks": {"results_found": 0}},
+            "meta": {"source": "script"}
+        }
+        print(json.dumps(result))
+        return
+
+    total_points = 0
+    total_max = 0
+    total_views = 0
+    popular_count = 0
+    high_engagement = 0
+
+    for v in videos:
+        pts, mx, det = score_single_video(v)
+        total_points += pts
+        total_max += mx
+        vc = v.get("view_count") or 0
+        total_views += vc
+        if vc > 100000:
+            popular_count += 1
+        if pts > 0 and mx > 0 and (pts / mx) > 0.5:
+            high_engagement += 1
+
+    # Map ratio to 1-5
+    if total_max == 0:
+        # Minimal data available, score based on count
+        if len(videos) >= 5:
+            outcome = 3
+        elif len(videos) >= 1:
+            outcome = 2
+        else:
+            outcome = 1
+    else:
+        ratio = total_points / total_max
+        if ratio >= 0.8:
+            outcome = 5
+        elif ratio >= 0.6:
+            outcome = 4
+        elif ratio >= 0.4:
+            outcome = 3
+        elif ratio >= 0.2:
+            outcome = 2
+        else:
+            outcome = 1
+
+    note_parts = [f"{len(videos)} result(s)"]
+    if popular_count:
+        note_parts.append(f"{popular_count} with >100k views")
+    if high_engagement:
+        note_parts.append(f"{high_engagement} high engagement")
+
+    result = {
+        "success": True,
+        "data": {
+            "outcome": outcome,
+            "note": ", ".join(note_parts),
+            "checks": {
+                "results_found": len(videos),
+                "total_views": total_views,
+                "has_popular": popular_count > 0,
+                "high_engagement_count": high_engagement,
+            }
+        },
+        "meta": {"source": "script"}
+    }
+
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()

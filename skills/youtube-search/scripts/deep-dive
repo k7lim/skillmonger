@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+deep-dive - Full metadata fetch for a single YouTube video.
+
+Usage: scripts/deep-dive <video-id-or-url> [--pretty]
+
+Examples:
+  scripts/deep-dive "rQ_J9WH6CGk"
+  scripts/deep-dive "https://www.youtube.com/watch?v=rQ_J9WH6CGk" --pretty
+
+Output is the shared state contract (schema_version: 1), consumed by
+downstream skills like youtube-clip.
+"""
+import sys
+import json
+import subprocess
+import time
+import argparse
+import re
+
+
+def build_envelope(success, data, meta):
+    return {"success": success, "data": data, "meta": meta}
+
+
+def extract_video_id(input_str):
+    """Extract video ID from URL or return as-is if already an ID."""
+    # YouTube URL patterns
+    patterns = [
+        r'(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$',
+    ]
+    for pat in patterns:
+        m = re.search(pat, input_str)
+        if m:
+            return m.group(1)
+    return input_str
+
+
+def normalize_chapters(raw_chapters):
+    """Convert yt-dlp chapters to our schema."""
+    if not raw_chapters:
+        return []
+    result = []
+    for ch in raw_chapters:
+        result.append({
+            "title": ch.get("title", ""),
+            "start": ch.get("start_time", 0),
+            "end": ch.get("end_time", 0),
+        })
+    return result
+
+
+def normalize_heatmap(raw_heatmap):
+    """Convert yt-dlp heatmap to our schema."""
+    if not raw_heatmap:
+        return None
+    result = []
+    for h in raw_heatmap:
+        result.append({
+            "start": h.get("start_time", 0),
+            "end": h.get("end_time", 0),
+            "value": h.get("value", 0),
+        })
+    return result
+
+
+def extract_caption_langs(caption_dict):
+    """Extract language codes from yt-dlp subtitle/caption dict."""
+    if not caption_dict or not isinstance(caption_dict, dict):
+        return []
+    return list(caption_dict.keys())
+
+
+def normalize_video(raw):
+    """Extract our ~15-field schema from yt-dlp's ~80-field output."""
+    vid = raw.get("id", "")
+    upload_date = raw.get("upload_date") or ""
+    if upload_date and len(upload_date) == 8:
+        upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+
+    duration = raw.get("duration")
+    if duration is not None:
+        duration = int(duration)
+
+    return {
+        "id": vid,
+        "title": raw.get("title", ""),
+        "channel": raw.get("channel") or raw.get("uploader") or "",
+        "channel_id": raw.get("channel_id") or "",
+        "channel_followers": raw.get("channel_follower_count"),
+        "duration": duration,
+        "view_count": raw.get("view_count"),
+        "like_count": raw.get("like_count"),
+        "comment_count": raw.get("comment_count"),
+        "upload_date": upload_date,
+        "categories": raw.get("categories") or [],
+        "tags": raw.get("tags") or [],
+        "description": raw.get("description") or "",
+        "url": raw.get("webpage_url") or f"https://www.youtube.com/watch?v={vid}",
+        "thumbnail": raw.get("thumbnail") or "",
+        "chapters": normalize_chapters(raw.get("chapters")),
+        "heatmap": normalize_heatmap(raw.get("heatmap")),
+        "captions": {
+            "manual": extract_caption_langs(raw.get("subtitles")),
+            "auto": extract_caption_langs(raw.get("automatic_captions")),
+        },
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Deep-dive metadata for a YouTube video")
+    parser.add_argument("video", help="Video ID or URL")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+
+    args = parser.parse_args()
+
+    video_id = extract_video_id(args.video)
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    start = time.time()
+
+    cmd = [
+        "python3", "-m", "yt_dlp",
+        "--dump-json", "--no-download",
+        "--no-warnings",
+        url,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        latency = int((time.time() - start) * 1000)
+        envelope = build_envelope(False, {}, {
+            "source": "yt-dlp", "video_id": video_id,
+            "error": "python3 not found. Run scripts/check-prereqs.sh to verify dependencies.",
+            "latency_ms": latency,
+            "schema_version": 1
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(3)
+    except subprocess.TimeoutExpired:
+        latency = int((time.time() - start) * 1000)
+        envelope = build_envelope(False, {}, {
+            "source": "yt-dlp", "video_id": video_id,
+            "error": "upstream timeout (30s)", "latency_ms": latency,
+            "schema_version": 1
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    latency = int((time.time() - start) * 1000)
+
+    if result.returncode != 0 and not result.stdout.strip():
+        envelope = build_envelope(False, {}, {
+            "source": "yt-dlp", "video_id": video_id,
+            "error": result.stderr.strip()[:500] or f"yt-dlp exit code {result.returncode}",
+            "latency_ms": latency,
+            "schema_version": 1
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        envelope = build_envelope(False, {}, {
+            "source": "yt-dlp", "video_id": video_id,
+            "error": "failed to parse yt-dlp JSON output",
+            "latency_ms": latency,
+            "schema_version": 1
+        })
+        print(json.dumps(envelope, indent=2 if args.pretty else None))
+        sys.exit(2)
+
+    data = normalize_video(raw)
+
+    envelope = build_envelope(True, data, {
+        "source": "yt-dlp",
+        "video_id": video_id,
+        "schema_version": 1,
+        "latency_ms": latency
+    })
+
+    print(json.dumps(envelope, indent=2 if args.pretty else None))
+
+
+if __name__ == "__main__":
+    main()
