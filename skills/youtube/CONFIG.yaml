@@ -1,0 +1,56 @@
+skill:
+  name: youtube
+  description: >
+    Use this skill when the user wants to chain YouTube operations: find videos
+    then download them, find videos then extract clips or timestamps, or do bulk
+    transcript research across many videos. Triggers on requests that combine
+    searching, inspecting, clipping, or downloading YouTube content in a single
+    workflow -- e.g. "find trailers for these movies and download them" or "find
+    conference talks and search their transcripts for X."
+  version: 0.1.0
+  created: 2026-04-19
+  updated: 2026-04-19
+  author: kevin
+
+triggers:
+  phrases:
+    - "youtube research"
+    - "find and download youtube videos"
+    - "find youtube videos about"
+    - "youtube clips for"
+    - "curate youtube videos"
+    - "find movie trailers for"
+    - "find videos about"
+    - "search conference talks on youtube"
+    - "download youtube trailers"
+    - "find explainer videos and clip"
+  keywords:
+    - youtube
+    - curate
+    - trailers
+    - clips
+    - research videos
+
+dependencies:
+  tools:
+    - Bash
+    - Agent
+  cli:
+    - python3
+    - jq
+  pip:
+    - yt-dlp
+  sibling_skills:
+    - youtube-search
+    - youtube-clip
+    - yt-dlp
+
+loading:
+  primary: SKILL.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
