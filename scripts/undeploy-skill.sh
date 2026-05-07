@@ -12,6 +12,11 @@ TOOL_PATHS=(
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
 )
 
+YOLOBOX_TOOL_PATHS=(
+  "claude:$HOME/.claude-yolobox/skills"
+  "codex:$HOME/.codex-yolobox/skills"
+)
+
 # Parse arguments
 SKILL_NAME=""
 DO_GLOBAL=""
@@ -94,6 +99,19 @@ if [ -n "$DO_GLOBAL" ]; then
         REMOVED=$((REMOVED + 1))
       else
         echo "  Skipped $target (not found)"
+      fi
+    fi
+  done
+
+  # Remove yolobox copies
+  for entry in "${YOLOBOX_TOOL_PATHS[@]}"; do
+    IFS=':' read -r tool global_path <<< "$entry"
+    if tool_enabled "$tool"; then
+      target="$global_path/$SKILL_NAME"
+      if [ -d "$target" ]; then
+        rm -rf "$target"
+        echo "✓ Removed $target (yolobox)"
+        REMOVED=$((REMOVED + 1))
       fi
     fi
   done

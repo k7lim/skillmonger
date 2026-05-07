@@ -14,9 +14,17 @@ TOOL_PATHS=(
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
 )
 
+# Yolobox mappings — skills are copied (not symlinked) because only
+# ~/Development is mounted into the container; ~/.local is not accessible.
+YOLOBOX_TOOL_PATHS=(
+  "claude:$HOME/.claude-yolobox/skills"
+  "codex:$HOME/.codex-yolobox/skills"
+)
+
 # Parse arguments
 SKILL_DIR=""
 DO_GLOBAL=""
+STORE_ONLY=""
 LOCAL_DIR=""
 TOOLS=""
 FORMAT=""
@@ -25,6 +33,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --global)
       DO_GLOBAL=1
+      shift
+      ;;
+    --store-only)
+      STORE_ONLY=1
       shift
       ;;
     --local)
@@ -45,16 +57,22 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --global          Install to ~/.local/share/skillmonger/skills/ and"
       echo "                    symlink from user-global tool directories"
+      echo "  --store-only      Install to ~/.local/share/skillmonger/skills/ only"
+      echo "                    (no symlinks to tool directories)"
       echo "  --local <dir>     Copy skill into project tool directories"
       echo "  --tools <list>    Comma-separated tools: claude,codex,opencode (default: all)"
       echo "  --format zip      Also create zip in dist/ for Claude.ai upload"
       echo ""
-      echo "At least one of --global or --local must be specified."
+      echo "At least one of --global, --store-only, or --local must be specified."
       echo ""
-      echo "Global paths:"
+      echo "Global paths (symlinks):"
       echo "  ~/.claude/skills/<name>           (Claude Code)"
       echo "  ~/.codex/skills/<name>            (Codex)"
       echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
+      echo ""
+      echo "Yolobox paths (copies, not symlinks):"
+      echo "  ~/.claude-yolobox/skills/<name>   (Claude Code Yolobox)"
+      echo "  ~/.codex-yolobox/skills/<name>    (Codex Yolobox)"
       echo ""
       echo "Local paths (copied):"
       echo "  <dir>/.claude/skills/<name>/      (Claude Code)"
@@ -70,13 +88,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$SKILL_DIR" ]; then
-  echo "Usage: deploy-skill.sh <skill-path> [--global] [--local <dir>] [--tools <list>]"
+  echo "Usage: deploy-skill.sh <skill-path> [--global|--store-only] [--local <dir>] [--tools <list>]"
   echo "Run with --help for more information."
   exit 1
 fi
 
-if [ -z "$DO_GLOBAL" ] && [ -z "$LOCAL_DIR" ]; then
-  echo "ERROR: Specify --global and/or --local <dir>"
+if [ -z "$DO_GLOBAL" ] && [ -z "$STORE_ONLY" ] && [ -z "$LOCAL_DIR" ]; then
+  echo "ERROR: Specify --global, --store-only, and/or --local <dir>"
   exit 1
 fi
 
@@ -123,7 +141,7 @@ if [ -f "$CONFIG_FILE" ]; then
     MISSING_DEPS=()
     while IFS= read -r dep; do
       found=0
-      if [ -n "$DO_GLOBAL" ] && [ -d "$SKILLMONGER_DIR/$dep" ]; then
+      if { [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; } && [ -d "$SKILLMONGER_DIR/$dep" ]; then
         found=1
       fi
       if [ -n "$LOCAL_DIR" ] && [ -n "$LOCAL_DIR" ]; then
@@ -154,15 +172,15 @@ if [ -f "$CONFIG_FILE" ]; then
     if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
       for dep in "${MISSING_DEPS[@]}"; do
         echo "⚠ Dependency '$dep' is not deployed"
-        echo "  Deploy it with: scripts/deploy-skill.sh skills/$dep${DO_GLOBAL:+ --global}${LOCAL_DIR:+ --local $LOCAL_DIR}"
+        echo "  Deploy it with: scripts/deploy-skill.sh skills/$dep${DO_GLOBAL:+ --global}${STORE_ONLY:+ --store-only}${LOCAL_DIR:+ --local $LOCAL_DIR}"
       done
       echo ""
     fi
   fi
 fi
 
-# Global deployment
-if [ -n "$DO_GLOBAL" ]; then
+# Global deployment (--global or --store-only)
+if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
   # Install to skillmonger directory
   mkdir -p "$SKILLMONGER_DIR"
   rm -rf "${SKILLMONGER_DIR:?}/$SKILL_NAME"
@@ -173,16 +191,31 @@ if [ -n "$DO_GLOBAL" ]; then
 
   echo "✓ Installed to $SKILLMONGER_DIR/$SKILL_NAME"
 
-  # Create symlinks in tool directories
-  for entry in "${TOOL_PATHS[@]}"; do
-    IFS=':' read -r tool global_path local_path <<< "$entry"
-    if tool_enabled "$tool"; then
-      mkdir -p "$global_path"
-      rm -f "$global_path/$SKILL_NAME"
-      ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
-      echo "✓ Symlinked $global_path/$SKILL_NAME"
-    fi
-  done
+  # Create symlinks in tool directories (only for --global, not --store-only)
+  if [ -n "$DO_GLOBAL" ]; then
+    for entry in "${TOOL_PATHS[@]}"; do
+      IFS=':' read -r tool global_path local_path <<< "$entry"
+      if tool_enabled "$tool"; then
+        mkdir -p "$global_path"
+        rm -f "$global_path/$SKILL_NAME"
+        ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
+        echo "✓ Symlinked $global_path/$SKILL_NAME"
+      fi
+    done
+
+    # Yolobox: copy instead of symlink (container can't see ~/.local)
+    for entry in "${YOLOBOX_TOOL_PATHS[@]}"; do
+      IFS=':' read -r tool global_path <<< "$entry"
+      if tool_enabled "$tool"; then
+        if [ -d "$global_path" ]; then
+          rm -rf "$global_path/$SKILL_NAME"
+          cp -r "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
+          find "$global_path/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
+          echo "✓ Copied to $global_path/$SKILL_NAME (yolobox)"
+        fi
+      fi
+    done
+  fi
 fi
 
 # Local deployment (copy)

@@ -98,6 +98,8 @@ scripts/deploy-skill.sh skills/my-skill/ --global --format zip
 | OpenCode | `~/.config/opencode/skills/` | `.opencode/skills/` |
 | Claude.ai | Upload zip via Settings > Features | — |
 
+Global deployment also copies skills to yolobox directories (`~/.claude-yolobox/skills/`, `~/.codex-yolobox/skills/`) since container mounts can't resolve symlinks to `~/.local`.
+
 ## The Feedback Loop
 
 Every SKILL.md includes an "After Execution" epilogue. The mechanism matches the skill's output type.

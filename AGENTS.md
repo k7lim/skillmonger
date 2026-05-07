@@ -44,7 +44,7 @@ vendor/              # External repos (gitignored content, don't edit)
 | `skill` | Show current skill status and next step | `~/.skillmonger-state` |
 | `ship-skill.sh` | Promote sandbox skill to `skills/` | `validate-skill.sh` |
 | `validate-skill.sh` | Check structure and frontmatter | nothing |
-| `deploy-skill.sh` | Symlink to tool directories | `validate-skill.sh` |
+| `deploy-skill.sh` | Symlink to tool directories; copy to yolobox dirs | `validate-skill.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
 | `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml |
@@ -56,6 +56,7 @@ vendor/              # External repos (gitignored content, don't edit)
 
 - `vendor/` — External repos. Changes get overwritten.
 - `.claude/skills/` — Deployed symlinks. Edit source in `skills/` instead.
+- `~/.claude-yolobox/skills/`, `~/.codex-yolobox/skills/` — Deployed copies for yolobox containers. Re-deploy from `skills/` to update.
 - `skills/remotion/references/` — Sourced from upstream remotion-dev/remotion.
 - `FEEDBACK.jsonl` files — Append-only. Use `log-feedback.sh` to add entries.
 
