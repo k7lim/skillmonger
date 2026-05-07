@@ -31,7 +31,7 @@ fi
 sleep 0.2
 
 # --- Build URL ---
-ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
+ENCODED_QUERY=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$QUERY" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
 
 # Always filter to journal articles with abstracts
 FILTER="type:journal-article,has-abstract:true"

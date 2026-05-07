@@ -30,7 +30,7 @@ if [[ -z "$QUERY" ]]; then
 fi
 
 # --- Build search term ---
-ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
+ENCODED_QUERY=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$QUERY" 2>/dev/null || echo "$QUERY" | sed 's/ /+/g')
 TERM="$ENCODED_QUERY"
 [[ "$REVIEWS_ONLY" == true ]] && TERM="${TERM}+AND+review[pt]"
 [[ "$OPEN_ACCESS" == true ]] && TERM="${TERM}+AND+free+full+text[filter]"
