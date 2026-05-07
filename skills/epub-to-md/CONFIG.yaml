@@ -1,7 +1,49 @@
-version: "0.1.0"
+# EPUB to Markdown Skill Configuration
+
+skill:
+  name: epub-to-md
+  version: 0.1.0
+  created: 2026-02-02
+  updated: 2026-02-02
+  author: kevin
+
+triggers:
+  phrases:
+    - "convert epub to markdown"
+    - "epub to md"
+    - "convert ebook to markdown"
+    - "extract epub content"
+    - "convert epub files"
+    - "epub2md"
+  keywords:
+    - epub
+    - ebook convert
+    - epub to markdown
+    - epub extraction
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - node
+    - epub2md
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
 compaction:
+  cycle_threshold: 15
+  last_compaction: null
   iteration_count: 0
-  last_compacted: null
+
 settings:
   default_merge: false
   default_localize: false
+
+budget:
+  metadata_max: 100
+  skill_max: 3000
+  memo_max: 2000
