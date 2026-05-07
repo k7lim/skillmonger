@@ -61,3 +61,13 @@ reviewDecision, reviewRequests, reviews, state, statusCheckRollup, title, update
 assignees, author, body, closed, closedAt, closedByPullRequestsReferences, comments,
 createdAt, id, isPinned, labels, milestone, number, projectCards, projectItems,
 reactionGroups, state, stateReason, title, updatedAt, url
+
+### gh search code --json
+
+path, repository, sha, textMatches, url
+
+### gh search issues --json
+
+assignees, author, authorAssociation, body, closedAt, commentsCount, createdAt,
+id, isLocked, isPullRequest, labels, number, repository, state, title,
+updatedAt, url

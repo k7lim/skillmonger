@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# deep-dive - Get a comprehensive health snapshot of a GitHub repo.
+#
+# Usage: deep-dive <owner/repo>
+#
+# Outputs a single JSON object combining:
+#   - repo metadata (stars, forks, license, topics, languages, latest release)
+#   - recent merged PRs (activity signal)
+#   - recent closed issues (responsiveness signal)
+#   - fork activity (for stale repos)
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+  echo "Usage: deep-dive <owner/repo>" >&2
+  exit 1
+fi
+
+REPO="$1"
+
+# Validate format
+if [[ ! "$REPO" =~ ^[^/]+/[^/]+$ ]]; then
+  echo "Error: repo must be in owner/repo format" >&2
+  exit 1
+fi
+
+# 1. Repo metadata via gh repo view (uses GraphQL field names)
+repo_json=$(gh repo view "$REPO" --json \
+  name,nameWithOwner,description,stargazerCount,forkCount,pushedAt,updatedAt,\
+licenseInfo,url,isArchived,isFork,primaryLanguage,languages,repositoryTopics,\
+latestRelease,hasIssuesEnabled,hasDiscussionsEnabled,issues 2>&1) || {
+  echo "{\"error\": \"Failed to fetch repo: $repo_json\"}"
+  exit 1
+}
+
+# 2. Recent merged PRs (are contributions being accepted?)
+prs_json=$(gh pr list --repo "$REPO" --state merged --limit 5 \
+  --json title,mergedAt,author 2>/dev/null) || prs_json="[]"
+
+# 3. Recent closed issues (are issues being addressed?)
+issues_json=$(gh issue list --repo "$REPO" --state closed --limit 5 \
+  --json title,closedAt,labels 2>/dev/null) || issues_json="[]"
+
+# 4. Top forks by stars (succession candidates if repo is stale)
+forks_json=$(gh api "repos/$REPO/forks?sort=stargazers&per_page=5" \
+  --jq '[.[] | {full_name, stargazers_count, pushed_at}]' 2>/dev/null) || forks_json="[]"
+
+# Combine into single JSON object
+jq -n \
+  --argjson repo "$repo_json" \
+  --argjson recent_prs "$prs_json" \
+  --argjson recent_closed_issues "$issues_json" \
+  --argjson top_forks "$forks_json" \
+  '{
+    repo: $repo,
+    recent_merged_prs: $recent_prs,
+    recent_closed_issues: $recent_closed_issues,
+    top_forks: $top_forks
+  }'

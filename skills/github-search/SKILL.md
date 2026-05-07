@@ -13,62 +13,92 @@ Run `scripts/check-prereqs`. If `gh-cli` or `gh-auth` missing, install/auth gh C
 
 ## Workflow
 
-### 1. Generate Diverse Queries
+### 1. Brainstorm Queries (LLM)
 
-From the user's description, create 3-5 search queries using different angles (direct terms, problem-focused, domain jargon, synonyms).
+From the user's description, generate 3-5 search strategies using different angles:
+- Direct terms (what it's called)
+- Problem-focused (what it solves)
+- Domain jargon / synonyms
+- Related tool names
 
-```bash
-gh search repos "markdown parser" --limit 10 --sort stars --json name,owner,description,stargazersCount,updatedAt,openIssues
-```
+For each strategy, decide which `scripts/search` flags would narrow results:
+- `--language` for language-specific searches
+- `--topic` for domain filtering
+- `--stars ">50"` to skip toy projects
+- `--updated ">2024-01-01"` to find actively maintained repos
 
-Include `updatedAt` and `openIssues` for quality evaluation.
-
-### 2. Filter Results
-
-**Stable vs Abandonware:**
-- Stable: Old but low open issues — mature, works fine
-- Abandonware: Old AND many ignored issues (30+) — avoid
-
-Skip: abandonware, trivial forks, off-topic matches.
-
-### 3. Deep Dive Top Candidates
+### 2. Execute Searches (Script)
 
 ```bash
-gh repo view owner/repo --json name,description,stargazerCount,forkCount,pushedAt,licenseInfo,url
-gh pr list --repo owner/repo --state merged --limit 5  # PRs being merged = healthy
+scripts/search "markdown parser" --limit 10 --language python
+scripts/search "md to html converter" --limit 10 --sort stars
+scripts/search "commonmark" --limit 10 --topic markdown --stars ">20"
 ```
 
-**For stale repos, check for active forks** — see `references/gh-search-syntax.md` for fork analysis patterns.
+The script handles correct `--json` field names and outputs valid JSON.
 
-### 4. Recommend
+### 3. Filter Results (LLM)
+
+From combined search results, skip: archived repos, trivial forks, off-topic matches, obvious toy projects.
+
+Pick 2-5 candidates worth investigating.
+
+### 4. Deep Dive Top Candidates (Script)
+
+```bash
+scripts/deep-dive owner/repo
+```
+
+The script returns a combined JSON snapshot with:
+- Repo metadata (stars, forks, license, topics, languages, latest release)
+- Recent merged PRs (contribution health)
+- Recent closed issues (maintainer responsiveness)
+- Top forks by stars (succession candidates for stale repos)
+
+### 5. Supplemental Investigation (LLM, as needed)
+
+For specific questions the deep-dive doesn't answer:
+
+```bash
+# Is this library actually used? Search for imports in other repos.
+gh search code "import toml" --language python --limit 5
+
+# Find related projects from the same author
+gh repo list owner --limit 20 --source --json name,description,stargazerCount,pushedAt
+
+# Check if a topic has an established ecosystem
+gh search repos --topic toml --sort stars --limit 5 --json fullName,stargazersCount,description
+```
+
+### 6. Recommend (LLM)
 
 Present 2-3 top options with:
-- Name, stars, last update
-- Why it fits
-- Caveats (license, complexity)
+- Name, stars, last update, license
+- Why it fits (features, language, ecosystem)
+- Caveats (stale, license, complexity, missing features)
 
-Then: **Borrow** (use existing), **Build** (nothing fits), or **Fork** (good base, needs changes).
+Then recommend: **Borrow** (use existing), **Build** (nothing fits), or **Fork** (good base, needs changes).
 
 ## Example
 
 **User:** "Python library to parse TOML"
 
-Search finds `uiri/toml` (600 stars, 2yr stale, 45 open issues). Check forks:
-
-```bash
-gh api repos/uiri/toml/forks --jq 'sort_by(.pushed_at) | reverse | .[0:5] | .[] | {full_name, pushed_at, stargazers_count}'
-```
+1. Brainstorm: "toml parser", "toml python", "config file parser toml"
+2. Run searches with `scripts/search`
+3. Filter to top candidates: tomli, toml, tomllib
+4. Deep-dive each with `scripts/deep-dive`
+5. Notice uiri/toml is stale — check deep-dive's `top_forks` for active successors
 
 **Response:**
 ```
 ### 1. Built-in tomllib (Python 3.11+)
 Standard library. No dependency needed.
 
-### 2. hukkin/tomli (1.2k stars, active)
+### 2. hukkin/tomli (554 stars, active, MIT)
 Maintained successor for older Python. Same API as tomllib.
 
-### 3. uiri/toml — ⚠️ Abandonware
-Original library, but stale with 45 ignored issues. Use tomli instead.
+### 3. uiri/toml — Abandonware
+Original library, stale with ignored issues. Use tomli instead.
 
 **Recommendation:** Borrow — use tomllib (3.11+) or tomli.
 ```
