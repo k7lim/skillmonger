@@ -1,0 +1,1 @@
+Find stuff on reddit. I do site:reddit.com a lot in searching google for social proof or wisdom of the crowds.
