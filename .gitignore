@@ -1,6 +1,8 @@
 # Build output
 dist/
 .claude/skills/
+.codex/skills/
+.opencode/skills/
 .beads/backup/
 .beads/embeddeddolt/
 
