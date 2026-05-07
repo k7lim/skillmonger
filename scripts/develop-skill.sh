@@ -30,9 +30,56 @@ fi
 
 # --- Input Collection ---
 
-# Skill name
+# Build list of unshipped seeds
+declare -a UNSHIPPED_SEEDS=()
+for seed in "$SEEDS_DIR"/*.md "$SEEDS_DIR"/*/; do
+  [ -e "$seed" ] || continue
+  # Skip README
+  [[ "$(basename "$seed")" == "README.md" ]] && continue
+
+  # Extract skill name from seed
+  seed_name=$(basename "$seed" .md)
+  seed_name=${seed_name%/}  # Remove trailing slash for directories
+
+  # Check if already shipped
+  if [ ! -d "$PROJECT_ROOT/skills/$seed_name" ]; then
+    UNSHIPPED_SEEDS+=("$seed_name")
+  fi
+done
+
+# Offer seed selection if there are unshipped seeds
+SKILL_NAME=""
+if [ ${#UNSHIPPED_SEEDS[@]} -gt 0 ]; then
+  echo "Unshipped seeds available:"
+  echo ""
+  for i in "${!UNSHIPPED_SEEDS[@]}"; do
+    echo "  $((i+1))) ${UNSHIPPED_SEEDS[$i]}"
+  done
+  echo "  0) Enter a new name manually"
+  echo ""
+
+  while true; do
+    read -rp "Choose a seed [0-${#UNSHIPPED_SEEDS[@]}]: " CHOICE
+
+    if [[ "$CHOICE" =~ ^[0-9]+$ ]]; then
+      if [ "$CHOICE" -eq 0 ]; then
+        break  # Fall through to manual entry
+      elif [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le ${#UNSHIPPED_SEEDS[@]} ]; then
+        SKILL_NAME="${UNSHIPPED_SEEDS[$((CHOICE-1))]}"
+        echo ""
+        echo "Selected: $SKILL_NAME"
+        break
+      fi
+    fi
+    echo "  Invalid choice"
+  done
+fi
+
+# Skill name (manual entry or validation of selected)
 while true; do
-  read -rp "Skill name (lowercase, hyphens only): " SKILL_NAME
+  if [ -z "$SKILL_NAME" ]; then
+    read -rp "Skill name (lowercase, hyphens only): " SKILL_NAME
+  fi
 
   if [ -z "$SKILL_NAME" ]; then
     echo "  Error: Name is required"
@@ -41,11 +88,13 @@ while true; do
 
   if ! echo "$SKILL_NAME" | grep -qE '^[a-z0-9-]+$'; then
     echo "  Error: Name must contain only lowercase letters, numbers, and hyphens"
+    SKILL_NAME=""
     continue
   fi
 
   if [ -d "$SANDBOX_SKILLS_DIR/$SKILL_NAME" ]; then
     echo "  Error: Skill '$SKILL_NAME' already exists at $SANDBOX_SKILLS_DIR/$SKILL_NAME"
+    SKILL_NAME=""
     continue
   fi
 
@@ -54,6 +103,7 @@ while true; do
     echo "  Warning: Skill '$SKILL_NAME' already exists in skillmonger at $PROJECT_ROOT/skills/$SKILL_NAME"
     read -rp "  Continue anyway? (y/N): " CONTINUE
     if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+      SKILL_NAME=""
       continue
     fi
   fi
@@ -70,16 +120,38 @@ ONE_LINER="${ONE_LINER:-A skill that does something useful.}"
 
 SKILL_DIR="$SANDBOX_SKILLS_DIR/$SKILL_NAME"
 SEED_FILE="$SEEDS_DIR/$SKILL_NAME.md"
+SEED_DIR="$SEEDS_DIR/$SKILL_NAME"
 echo ""
 echo "Creating skill stub at $SKILL_DIR/..."
 
 mkdir -p "$SKILL_DIR/scripts"
 mkdir -p "$SKILL_DIR/references"
 
-# Copy seed file as PLAN.md if it exists
+# Copy seed file/directory as PLAN.md if it exists
 if [ -f "$SEED_FILE" ]; then
   cp "$SEED_FILE" "$SKILL_DIR/PLAN.md"
   echo "  ✓ Copied seed notes to PLAN.md"
+elif [ -d "$SEED_DIR" ]; then
+  # Directory seed: concatenate all .md files into PLAN.md
+  {
+    echo "# Seed materials for $SKILL_NAME"
+    echo ""
+    for md_file in "$SEED_DIR"/*.md; do
+      [ -f "$md_file" ] || continue
+      echo "---"
+      echo "## $(basename "$md_file")"
+      echo ""
+      cat "$md_file"
+      echo ""
+    done
+  } > "$SKILL_DIR/PLAN.md"
+  # Also copy any non-md files to references
+  for ref_file in "$SEED_DIR"/*; do
+    [ -f "$ref_file" ] || continue
+    [[ "$ref_file" == *.md ]] && continue
+    cp "$ref_file" "$SKILL_DIR/references/"
+  done
+  echo "  ✓ Copied seed directory to PLAN.md and references/"
 fi
 
 # Generate BRIEF.md from template for yolo agent session
@@ -321,34 +393,6 @@ EVALEOF
 chmod +x "$SKILL_DIR/scripts/evaluate.sh"
 echo "  ✓ Created scripts/evaluate.sh (template)"
 
-# Create a simple README for the sandbox skill
-cat > "$SKILL_DIR/README.md" << EOF
-# $SKILL_NAME (sandbox draft)
-
-Created: $TODAY
-
-## Development Workflow
-
-1. **Fill out DESIGN.md** - Think through deterministic vs natural language
-2. **Build check-prereqs.sh** - Add checks for all detectable prerequisites
-3. **Iterate on SKILL.md** - Test with yolo permissions in sandbox
-4. **Ship to skillmonger** when stable:
-   \`\`\`bash
-   ship-skill $SKILL_DIR
-   \`\`\`
-
-## Testing
-
-\`\`\`bash
-# Test your status check
-./scripts/check-prereqs.sh | jq .
-
-# Test the skill with an agent (in sandbox with yolo)
-cd $SKILL_DIR
-claude  # or your preferred agent
-\`\`\`
-EOF
-echo "  ✓ Created README.md"
 echo "  ✓ Created references/ (empty)"
 
 # --- Write State ---
