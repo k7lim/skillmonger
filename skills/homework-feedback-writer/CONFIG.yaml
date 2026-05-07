@@ -1,0 +1,32 @@
+# Configuration for homework-feedback-writer
+
+skill:
+  name: homework-feedback-writer
+  version: 0.1.0
+  created: 2026-02-02
+  updated: 2026-02-03
+
+triggers:
+  phrases:
+    - "write feedback for this homework"
+    - "give feedback on this essay"
+    - "review this student's work"
+    - "grade this assignment"
+    - "provide feedback on this paper"
+    - "comment on this student submission"
+    - "write comments for this homework"
+    - "help me give feedback to my student"
+  keywords:
+    - feedback
+    - homework
+    - grading
+    - student
+    - essay
+
+dependencies:
+  tools: []
+  cli: []
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0
