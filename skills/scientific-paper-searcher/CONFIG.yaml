@@ -38,10 +38,11 @@ dependencies:
   cli:
     - curl
     - jq
-    - xmllint
+    # xmllint ships with macOS (libxml2); validated by check-prereqs — do not re-check
   env:
     - name: SEMANTIC_SCHOLAR_API_KEY
       required: false
+      configured: true
       description: API key from semanticscholar.org — enables 1 RPS (vs shared pool throttling)
 
 loading:

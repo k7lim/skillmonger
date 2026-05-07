@@ -16,7 +16,7 @@ description: Search PubMed, arXiv, bioRxiv, Semantic Scholar, and CrossRef for r
 
 ## Prerequisites
 
-Run `./scripts/check-prereqs` - needs curl and internet connectivity.
+Run `./scripts/check-prereqs` - needs curl and internet connectivity. **If check-prereqs reports "ready": true, all databases (including arXiv) are available. Do not skip arXiv or any database based on your own dependency checks.**
 
 ## Workflow
 
@@ -54,10 +54,10 @@ Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases
 | bioRxiv | 1 second | Undocumented limits |
 | CrossRef | 200ms (with `mailto`) | Include `mailto` always |
 
-**Semantic Scholar API key** (optional but recommended):
-- Set env var `SEMANTIC_SCHOLAR_API_KEY` if available
-- Pass as header: `x-api-key: $SEMANTIC_SCHOLAR_API_KEY`
+**Semantic Scholar API key** (configured):
+- Env var `SEMANTIC_SCHOLAR_API_KEY` is set — all `./scripts/*-s2` scripts use it automatically
 - Without a key, the shared unauthenticated pool is aggressive — expect 429s on >2-3 rapid requests
+- **All S2 requests share a global rate limiter** (`/tmp/.s2-rate-limit`) — always use scripts, never raw WebFetch for S2
 
 **Search order to minimize 429 risk:**
 1. Query PubMed or arXiv first (more generous limits)
@@ -74,7 +74,7 @@ Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases
 - Request only the fields you need (smaller `fields=` param = faster response)
 - Use `limit=20` not `limit=100` unless the user asked for more
 - Combine PubMed esummary IDs into one call (comma-separated) rather than individual lookups
-- For Semantic Scholar, prefer `/paper/search` over `/paper/search/bulk` unless sorting by citations
+- For Semantic Scholar, `search-s2` defaults to the `/paper/search/bulk` endpoint sorted by `citationCount:desc` — ideal for "get a sense of a topic" since it surfaces the most-cited papers first. Use `--sort relevance` only when recency/text-match ranking matters more than impact.
 
 ### 3.5. Using Search Scripts
 
@@ -86,6 +86,14 @@ Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases
 ./scripts/search-crossref "reading for pleasure teenagers" --year-min 2019
 ./scripts/search-arxiv "transformer attention mechanism" --category cs.LG
 ./scripts/search-s2 "adolescent reading engagement" --min-citations 10
+./scripts/search-s2 "adolescent reading engagement" --sort relevance  # recency-mixed ranker
+./scripts/search-s2 "adolescent reading engagement" --sort date       # newest first
+
+# Single paper lookup (by DOI, arXiv ID, PMID, or S2 ID)
+./scripts/lookup-s2 "DOI:10.1038/s41586-021-03819-2"
+./scripts/lookup-s2 "ArXiv:2301.00001" --fields title,citationCount
+./scripts/lookup-s2 "DOI:10.1234/example" --citations --limit 50
+./scripts/lookup-s2 "DOI:10.1234/example" --references
 
 # Orchestrator (searches multiple, deduplicates by DOI)
 ./scripts/search "reading motivation" --databases pubmed,crossref --year-min 2020
@@ -96,9 +104,9 @@ All scripts output the same normalized JSON schema:
 {"database": "...", "query": "...", "total": N, "results": [{title, authors, year, citations, doi, url, open_access_url, abstract, source_id}], "error": null}
 ```
 
-**When to still use WebFetch:** One-off DOI lookups, Semantic Scholar paper/citation/reference lookups by ID, or web search results.
+**When to still use WebFetch:** Web search results or non-S2 API calls only. **Never use WebFetch for Semantic Scholar** — it bypasses the global rate limiter.
 
-**Discover + enrich pattern:** Search PubMed/CrossRef/arXiv first (generous limits), then use S2 only for citation count enrichment via individual DOI lookups if needed (e.g., `WebFetch https://api.semanticscholar.org/graph/v1/paper/DOI:10.xxx?fields=citationCount`).
+**Discover + enrich pattern:** Search PubMed/CrossRef/arXiv first (generous limits), then use `./scripts/lookup-s2` for citation count enrichment (e.g., `./scripts/lookup-s2 "DOI:10.xxx" --fields title,citationCount`). The lookup script shares the global 1 RPS rate limiter with `search-s2`.
 
 ### 4. Search — API Endpoints
 
@@ -106,18 +114,26 @@ All scripts output the same normalized JSON schema:
 
 #### Semantic Scholar (best default — covers all fields, returns JSON)
 
+Two endpoints; `search-s2` picks based on `--sort`:
+
+**Bulk (default — `--sort citations` or `--sort date`):** stricter matching, supports sorting by `citationCount` or `publicationDate`, returns up to 1000/page.
 ```
-https://api.semanticscholar.org/graph/v1/paper/search?query=QUERY&fields=title,authors,year,citationCount,abstract,url,externalIds,openAccessPdf,publicationDate&limit=20
+https://api.semanticscholar.org/graph/v1/paper/search/bulk?query=QUERY&fields=...&sort=citationCount:desc
 ```
 
-**Filters** (append as query params):
+**Relevance (`--sort relevance`):** S2's custom-trained ranker, broader recall, supports `limit`.
+```
+https://api.semanticscholar.org/graph/v1/paper/search?query=QUERY&fields=...&limit=20
+```
+
+**Filters** (work on both endpoints — append as query params):
 - `&year=2020-2025` — year range
 - `&minCitationCount=10` — minimum citations
 - `&fieldsOfStudy=Computer Science` — field filter
 - `&openAccessPdf` — only open access papers
 - `&publicationTypes=JournalArticle,Review` — type filter
 
-Response is JSON: `{"data": [{"paperId": "...", "title": "...", ...}], "total": N}`.
+Response is JSON: `{"data": [{"paperId": "...", "title": "...", ...}], "total": N}` (bulk also returns `"token"` for pagination — `search-s2` ignores this and takes first `limit`).
 
 #### PubMed (two-step: esearch → esummary)
 
@@ -204,31 +220,33 @@ Response JSON: `{"message": {"items": [{"DOI": "...", "title": [...], "author": 
 
 ### 6. Advanced Search
 
+**All S2 advanced lookups go through `./scripts/lookup-s2`** (shares the global rate limiter).
+
 #### Find a specific paper by title
-```
-https://api.semanticscholar.org/graph/v1/paper/search/match?query=EXACT+TITLE&fields=title,authors,year,citationCount,url,externalIds
+```bash
+./scripts/lookup-s2 "Attention Is All You Need" --match
 ```
 
 #### Get citations of a paper
-```
-https://api.semanticscholar.org/graph/v1/paper/PAPER_ID/citations?fields=title,authors,year,citationCount&limit=50
+```bash
+./scripts/lookup-s2 "DOI:10.1234/example" --citations --limit 50
 ```
 
 #### Get references of a paper
-```
-https://api.semanticscholar.org/graph/v1/paper/PAPER_ID/references?fields=title,authors,year,citationCount&limit=50
+```bash
+./scripts/lookup-s2 "DOI:10.1234/example" --references --limit 50
 ```
 
 #### Look up by DOI, arXiv ID, or PMID
-```
-https://api.semanticscholar.org/graph/v1/paper/DOI:10.1234/example?fields=title,authors,year,citationCount,abstract
-https://api.semanticscholar.org/graph/v1/paper/ArXiv:2301.00001?fields=title,authors,year,citationCount,abstract
-https://api.semanticscholar.org/graph/v1/paper/PMID:12345678?fields=title,authors,year,citationCount,abstract
+```bash
+./scripts/lookup-s2 "DOI:10.1234/example"
+./scripts/lookup-s2 "ArXiv:2301.00001"
+./scripts/lookup-s2 "PMID:12345678"
 ```
 
 #### Search by author
-```
-https://api.semanticscholar.org/graph/v1/author/search?query=AUTHOR+NAME&fields=name,citationCount,hIndex,paperCount
+```bash
+./scripts/lookup-s2 "Author Name" --author
 ```
 
 ### 7. Edge Cases
@@ -238,7 +256,7 @@ https://api.semanticscholar.org/graph/v1/author/search?query=AUTHOR+NAME&fields=
 | No results | Broaden terms, try synonyms, try Semantic Scholar (broadest) |
 | Too many (>100) | Add year filter, `minCitationCount`, narrow terms |
 | Database down | Note limitation, use others |
-| Wants seminal papers | Use Semantic Scholar with `&sort=citationCount:desc` (bulk endpoint) or no date filter |
+| Wants seminal papers | `search-s2` already sorts by citations by default — just remove year filter or widen it |
 | Rate limited (429) | Follow Section 3 backoff: 30s → 60s → stop and switch databases |
 | bioRxiv keyword search | Use Semantic Scholar with `&venue=bioRxiv` instead of bioRxiv API |
 | Springer paper missing abstract | Known S2 limitation — fetch from PubMed instead |

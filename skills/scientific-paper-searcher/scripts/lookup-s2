@@ -1,0 +1,154 @@
+#!/bin/bash
+# lookup-s2 — Look up a single paper on Semantic Scholar by DOI, arXiv ID, PMID, or S2 paper ID
+# Uses the global S2 rate limiter to respect 1 RPS across all endpoints.
+#
+# Usage:
+#   lookup-s2 DOI:10.1234/example
+#   lookup-s2 ArXiv:2301.00001
+#   lookup-s2 PMID:12345678
+#   lookup-s2 <s2_paper_id>
+#   lookup-s2 <id> --citations        # get papers that cite this one
+#   lookup-s2 <id> --references       # get papers this one references
+#   lookup-s2 <id> --fields title,citationCount   # custom fields
+#   lookup-s2 <id> --limit 50         # limit for citations/references
+#   lookup-s2 "Attention Is All You Need" --match   # find paper by exact title
+#   lookup-s2 "Author Name" --author                # search by author name
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_s2-rate-limit"
+
+# --- Defaults ---
+PAPER_ID=""
+MODE="paper"   # paper | citations | references | match | author
+FIELDS="title,authors,year,citationCount,abstract,url,externalIds,openAccessPdf"
+LIMIT=50
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --citations) MODE="citations"; shift ;;
+    --references) MODE="references"; shift ;;
+    --match) MODE="match"; shift ;;
+    --author) MODE="author"; FIELDS="name,citationCount,hIndex,paperCount"; shift ;;
+    --fields) FIELDS="$2"; shift 2 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
+    --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
+    *) PAPER_ID="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$PAPER_ID" ]]; then
+  echo '{"error":"missing_id","detail":"Usage: lookup-s2 <DOI:xxx|ArXiv:xxx|PMID:xxx|s2id> [--citations|--references] [--fields F] [--limit N]"}'
+  exit 1
+fi
+
+# --- Build URL ---
+ENCODED_ID=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=':'))" "$PAPER_ID" 2>/dev/null || echo "$PAPER_ID")
+case "$MODE" in
+  paper)
+    URL="https://api.semanticscholar.org/graph/v1/paper/${ENCODED_ID}?fields=${FIELDS}" ;;
+  citations)
+    URL="https://api.semanticscholar.org/graph/v1/paper/${ENCODED_ID}/citations?fields=${FIELDS}&limit=${LIMIT}" ;;
+  references)
+    URL="https://api.semanticscholar.org/graph/v1/paper/${ENCODED_ID}/references?fields=${FIELDS}&limit=${LIMIT}" ;;
+  match)
+    ENCODED_QUERY=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$PAPER_ID" 2>/dev/null || echo "$PAPER_ID" | sed 's/ /+/g')
+    URL="https://api.semanticscholar.org/graph/v1/paper/search/match?query=${ENCODED_QUERY}&fields=${FIELDS}" ;;
+  author)
+    ENCODED_QUERY=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$PAPER_ID" 2>/dev/null || echo "$PAPER_ID" | sed 's/ /+/g')
+    URL="https://api.semanticscholar.org/graph/v1/author/search?query=${ENCODED_QUERY}&fields=${FIELDS}" ;;
+esac
+
+# --- Fetch with rate limiting ---
+fetch() {
+  curl -s -w "\n%{http_code}" --max-time 15 "${S2_AUTH_HEADER[@]+"${S2_AUTH_HEADER[@]}"}" "$URL"
+}
+
+s2_wait
+RESPONSE=$(fetch)
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+# --- Handle 429 ---
+if [[ "$HTTP_CODE" == "429" ]]; then
+  sleep 30
+  s2_wait
+  RESPONSE=$(fetch)
+  HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+  BODY=$(echo "$RESPONSE" | sed '$d')
+fi
+
+if [[ "$HTTP_CODE" == "404" ]]; then
+  echo '{"error":"not_found","paper_id":"'"$PAPER_ID"'","detail":"Paper not found in Semantic Scholar"}'
+  exit 1
+fi
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo '{"error":"http_'"$HTTP_CODE"'","paper_id":"'"$PAPER_ID"'"}'
+  exit 1
+fi
+
+# --- Normalize output ---
+case "$MODE" in
+  paper)
+    echo "$BODY" | jq '{
+      title: .title,
+      authors: [(.authors // [])[] | .name],
+      year: .year,
+      citations: (.citationCount // 0),
+      doi: (.externalIds.DOI // null),
+      arxiv_id: (.externalIds.ArXiv // null),
+      pmid: (.externalIds.PubMed // null),
+      url: .url,
+      open_access_url: (.openAccessPdf.url // null),
+      abstract: .abstract,
+      source_id: ("S2:" + (.paperId // "unknown"))
+    }'
+    ;;
+  citations|references)
+    echo "$BODY" | jq --arg mode "$MODE" '{
+      paper_id: "'"$PAPER_ID"'",
+      type: $mode,
+      total: ((.offset // 0) + ([.data // [] | length] | .[0])),
+      results: [(.data // [])[] | (.citingPaper // .citedPaper) | {
+        title: .title,
+        authors: [(.authors // [])[] | .name],
+        year: .year,
+        citations: (.citationCount // 0),
+        doi: (.externalIds.DOI // null),
+        url: .url,
+        open_access_url: (.openAccessPdf.url // null),
+        abstract: .abstract,
+        source_id: ("S2:" + (.paperId // "unknown"))
+      }]
+    }'
+    ;;
+  match)
+    echo "$BODY" | jq '{
+      title: .data[0].title,
+      authors: [(.data[0].authors // [])[] | .name],
+      year: .data[0].year,
+      citations: (.data[0].citationCount // 0),
+      doi: (.data[0].externalIds.DOI // null),
+      arxiv_id: (.data[0].externalIds.ArXiv // null),
+      pmid: (.data[0].externalIds.PubMed // null),
+      url: .data[0].url,
+      open_access_url: (.data[0].openAccessPdf.url // null),
+      abstract: .data[0].abstract,
+      source_id: ("S2:" + (.data[0].paperId // "unknown"))
+    }'
+    ;;
+  author)
+    echo "$BODY" | jq '{
+      total: (.total // 0),
+      results: [(.data // [])[] | {
+        name: .name,
+        author_id: .authorId,
+        citation_count: (.citationCount // 0),
+        h_index: (.hIndex // 0),
+        paper_count: (.paperCount // 0)
+      }]
+    }'
+    ;;
+esac

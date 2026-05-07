@@ -1,0 +1,53 @@
+#!/bin/bash
+# _s2-rate-limit — Global rate limiter for Semantic Scholar API (1 RPS cumulative)
+# Source this file or call it directly before any S2 API request.
+#
+# Usage (source):
+#   source "$(dirname "$0")/_s2-rate-limit"
+#   s2_wait                        # blocks until safe to send
+#   "${S2_AUTH_HEADER[@]+...}"     # use in curl for auth header
+#
+# Usage (direct):
+#   ./_s2-rate-limit  # blocks until safe, then exits
+
+S2_LOCK="/tmp/.s2-rate-limit"
+
+s2_wait() {
+  local now last elapsed wait_ms
+  # Authenticated = 1 RPS, unauthenticated = 0.33 RPS (3s)
+  local min_gap_ms=1000
+  if [[ -z "${SEMANTIC_SCHOLAR_API_KEY:-}" ]]; then
+    min_gap_ms=3000
+  fi
+
+  # Read last request timestamp (milliseconds since epoch)
+  if [[ -f "$S2_LOCK" ]]; then
+    last=$(cat "$S2_LOCK" 2>/dev/null || echo "0")
+  else
+    last=0
+  fi
+
+  now=$(python3 -c "import time; print(int(time.time()*1000))")
+  elapsed=$((now - last))
+
+  if [[ $elapsed -lt $min_gap_ms ]]; then
+    wait_ms=$((min_gap_ms - elapsed))
+    # Convert to fractional seconds for sleep
+    sleep "$(python3 -c "print(${wait_ms}/1000)")"
+  fi
+
+  # Stamp the time of this request
+  python3 -c "import time; print(int(time.time()*1000))" > "$S2_LOCK"
+}
+
+# Sets S2_AUTH_HEADER array — call after sourcing, use as: "${S2_AUTH_HEADER[@]+"${S2_AUTH_HEADER[@]}"}"
+if [[ -n "${SEMANTIC_SCHOLAR_API_KEY:-}" ]]; then
+  S2_AUTH_HEADER=(-H "x-api-key: $SEMANTIC_SCHOLAR_API_KEY")
+else
+  S2_AUTH_HEADER=()
+fi
+
+# If executed directly (not sourced), just wait and exit
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  s2_wait
+fi
