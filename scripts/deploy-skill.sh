@@ -197,7 +197,7 @@ if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
       IFS=':' read -r tool global_path local_path <<< "$entry"
       if tool_enabled "$tool"; then
         mkdir -p "$global_path"
-        rm -f "$global_path/$SKILL_NAME"
+        rm -rf "$global_path/$SKILL_NAME"
         ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
         echo "✓ Symlinked $global_path/$SKILL_NAME"
       fi

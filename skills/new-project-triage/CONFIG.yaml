@@ -1,0 +1,45 @@
+# New Project Triage Skill Configuration
+
+skill:
+  name: new-project-triage
+  version: 1.0.0
+  created: 2026-03-11
+  updated: 2026-05-09
+  author: kevin
+
+triggers:
+  phrases:
+    - "where should I put this"
+    - "new project idea"
+    - "I have an idea"
+    - "where does this go"
+    - "where to file"
+    - "start a new project"
+    - "new repo"
+    - "where to put"
+  keywords:
+    - triage
+    - new project
+    - where to put
+    - file this
+
+dependencies:
+  tools: []
+  cli: []
+  permissions: []
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 3000
+  memo_max: 2000
