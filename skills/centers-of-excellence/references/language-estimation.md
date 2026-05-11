@@ -20,6 +20,7 @@ This reference provides methodology for estimating the percentage of online know
 
 3. **Online Presence**
    - Wikipedia article depth and quality
+   - Wikipedia article-count scale priors, adjusted for bot-heavy editions
    - Stack Overflow / specialized forums
    - Social media discourse
    - YouTube and video content
@@ -47,6 +48,8 @@ Start with these baselines and adjust based on the specific topic:
 | Arabic | 1-3% | Religion, regional policy |
 | Korean | 1-3% | Technology, entertainment |
 | Others | Variable | Topic-dependent |
+
+For a rough language-scale prior, consult [wikipedia-language-article-counts.md](wikipedia-language-article-counts.md). Treat that file as a visibility prior only. It should never override center-specific language use, publication language, or topic-specific expertise.
 
 ## Adjustment Factors
 
@@ -85,6 +88,17 @@ For rapidly evolving fields:
 - Check publication dates
 - Recent Chinese output growing fast in AI, biotech
 - Historical knowledge may skew differently than current
+
+### By Wikipedia Article Count
+
+Use article counts to keep estimates grounded in the relative online footprint of major language communities, especially when the selected centers span many regions. Do not convert article-count percentages directly into knowledge-share percentages.
+
+Recommended adjustment:
+
+- Use article counts as a weak prior for broad web visibility.
+- Apply a strong topic/center relevance multiplier before assigning share.
+- Downweight known bot-heavy editions unless they are locally relevant.
+- Collapse long-tail languages below 1% into `Other`.
 
 ## Output Requirements
 

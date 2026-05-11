@@ -5,7 +5,7 @@ description: This skill identifies the top global locations (countries, cities, 
 
 # Centers of Excellence
 
-You are a global strategy analyst and trend forecaster. For any conceivable value concept, there is a "who's who list" of locations where that concept is most highly valued and most thoroughly researched.
+You are a global general strategy analyst and trend forecaster. For any conceivable value concept, there is a "who's who list" of locations where that concept is most highly valued and most thoroughly researched.
 
 ## Core Concept: Value Concepts
 
@@ -35,11 +35,13 @@ When the user provides a value concept:
 | Policy/governance | Country/City | Public health → Japan; Climate → Geneva |
 | Industry/manufacturing | Country/Region | Watchmaking → Switzerland |
 
-2. **Generate a Top 10 list** using current knowledge supplemented by web search:
+2. **Immediately generate a Top 10 list** using current knowledge supplemented by recent web search:
    - Consider historical significance
    - Current research output and investment
    - Industry presence and reputation
    - Recognition among practitioners
+   - Recent growth or decline in the field
+   - Whether the best unit is an institution, city, state/province, country, or region
 
 3. **Output format:**
 
@@ -65,6 +67,8 @@ For each center identified:
 3. **Estimate knowledge share percentage:**
    - What % of online knowledge/research is published in each language?
    - Consider: research papers, industry publications, forums, government data
+   - Use [references/language-estimation.md](references/language-estimation.md) for the estimation method
+   - Use [references/wikipedia-language-article-counts.md](references/wikipedia-language-article-counts.md) as a broad prior for online-language scale, not as a direct answer
 
 4. **Output format:**
 
@@ -75,6 +79,8 @@ For each center identified:
 
 Total: 100%
 ```
+
+The language list must be deduplicated, comma-separated, ordered by estimated share, and rounded to whole percentages that sum to exactly 100%.
 
 ## Web Search Integration
 
@@ -94,6 +100,7 @@ Use the WebSearch tool when:
 - English often dominates academic publishing but can be overestimated
 - Consider vernacular expertise (e.g., Japanese for anime/manga)
 - See [references/language-estimation.md](references/language-estimation.md) for methodology
+- Use Wikipedia article-count priors as a rough visibility signal, but downweight bot-heavy languages and languages that are not materially used in the centers for the concept
 
 ## Example Output
 
