@@ -1,6 +1,6 @@
 #!/bin/bash
 # search-crossref — Search CrossRef with journal-article filter and normalized output
-# Usage: search-crossref <query> [--year-min YYYY] [--year-max YYYY] [--limit N] [--mailto EMAIL]
+# Usage: search-crossref <query> [--year-min YYYY] [--year-max YYYY] [--limit N] [--offset N] [--mailto EMAIL]
 set -uo pipefail
 
 # --- Defaults ---
@@ -8,15 +8,61 @@ QUERY=""
 YEAR_MIN=""
 YEAR_MAX=""
 LIMIT=20
+OFFSET=0
 MAILTO="skillmonger@example.com"
+FIELDS=""
+
+describe() {
+  cat <<'JSON'
+{
+  "name": "search-crossref",
+  "version": "2.0.0",
+  "flags": [
+    {"name": "query", "type": "string", "required": true, "description": "Search query text"},
+    {"name": "--year-min", "type": "integer", "required": false, "description": "Earliest publication year"},
+    {"name": "--year-max", "type": "integer", "required": false, "description": "Latest publication year"},
+    {"name": "--limit", "type": "integer", "required": false, "default": 20, "description": "Maximum number of results to return"},
+    {"name": "--offset", "type": "integer", "required": false, "default": 0, "description": "Zero-based result offset for pagination"},
+    {"name": "--mailto", "type": "string", "required": false, "default": "skillmonger@example.com", "description": "Contact email sent to Crossref API"},
+    {"name": "--fields", "type": "string", "required": false, "description": "Comma-separated normalized result fields to include"}
+  ],
+  "output_fields": [
+    {"name": "title", "type": "string", "description": "Paper title"},
+    {"name": "authors", "type": "array<string>", "description": "Author names"},
+    {"name": "year", "type": "integer|null", "description": "Publication year"},
+    {"name": "citations", "type": "integer", "description": "Citation count"},
+    {"name": "doi", "type": "string|null", "description": "Digital Object Identifier"},
+    {"name": "url", "type": "string|null", "description": "Crossref work URL"},
+    {"name": "open_access_url", "type": "string|null", "description": "Open access PDF URL when available"},
+    {"name": "abstract", "type": "string|null", "description": "Paper abstract with markup removed"},
+    {"name": "source_id", "type": "string", "description": "Source-prefixed DOI identifier"},
+    {"name": "offset", "type": "integer", "description": "Zero-based result offset used for pagination"}
+  ]
+}
+JSON
+}
+
+filter_result_fields() {
+  if [[ -z "$FIELDS" ]]; then
+    cat
+  else
+    jq --arg fields "$FIELDS" '
+      ($fields | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $wanted
+      | .results |= map(with_entries(select(.key as $key | $wanted | index($key))))
+    '
+  fi
+}
 
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --describe) describe; exit 0 ;;
     --year-min) YEAR_MIN="$2"; shift 2 ;;
     --year-max) YEAR_MAX="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
+    --offset) OFFSET="$2"; shift 2 ;;
     --mailto) MAILTO="$2"; shift 2 ;;
+    --fields) FIELDS="$2"; shift 2 ;;
     --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
     *) QUERY="$1"; shift ;;
   esac
@@ -38,7 +84,7 @@ FILTER="type:journal-article,has-abstract:true"
 [[ -n "$YEAR_MIN" ]] && FILTER+=",from-pub-date:${YEAR_MIN}"
 [[ -n "$YEAR_MAX" ]] && FILTER+=",until-pub-date:${YEAR_MAX}"
 
-URL="https://api.crossref.org/works?query=${ENCODED_QUERY}&rows=${LIMIT}&sort=relevance&order=desc&mailto=${MAILTO}&filter=${FILTER}"
+URL="https://api.crossref.org/works?query=${ENCODED_QUERY}&rows=${LIMIT}&offset=${OFFSET}&sort=relevance&order=desc&mailto=${MAILTO}&filter=${FILTER}"
 
 # --- Fetch ---
 RESPONSE=$(curl -s --max-time 20 -w "\n%{http_code}" "$URL")
@@ -53,15 +99,23 @@ if [[ "$HTTP_CODE" == "429" ]]; then
 fi
 
 if [[ "$HTTP_CODE" != "200" ]]; then
-  echo '{"database":"crossref","query":"'"$QUERY"'","total":0,"results":[],"error":"http_'"$HTTP_CODE"'"}'
+  jq -n --arg query "$QUERY" --arg error "http_${HTTP_CODE}" --argjson offset "$OFFSET" '{
+    database: "crossref",
+    query: $query,
+    total: 0,
+    offset: $offset,
+    results: [],
+    error: $error
+  }'
   exit 1
 fi
 
 # --- Normalize with jq ---
-echo "$BODY" | jq --arg query "$QUERY" '{
+echo "$BODY" | jq --arg query "$QUERY" --argjson offset "$OFFSET" '{
   database: "crossref",
   query: $query,
   total: (.message["total-results"] // 0),
+  offset: $offset,
   results: [(.message.items // [])[] | {
     title: ((.title // [""])[0]),
     authors: [(.author // [])[] | ((.given // "") + " " + (.family // "")) | ltrimstr(" ") | rtrimstr(" ")],
@@ -74,4 +128,4 @@ echo "$BODY" | jq --arg query "$QUERY" '{
     source_id: ("DOI:" + .DOI)
   }],
   error: null
-}'
+}' | filter_result_fields

@@ -95,7 +95,7 @@ Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases
 ./scripts/lookup-s2 "DOI:10.1234/example" --citations --limit 50
 ./scripts/lookup-s2 "DOI:10.1234/example" --references
 
-# Orchestrator (searches multiple, deduplicates by DOI)
+# Orchestrator (searches multiple, deduplicates by DOI, ranks merged results by citations)
 ./scripts/search "reading motivation" --databases pubmed,crossref --year-min 2020
 ```
 

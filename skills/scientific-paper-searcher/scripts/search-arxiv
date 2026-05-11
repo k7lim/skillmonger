@@ -1,20 +1,65 @@
 #!/bin/bash
 # search-arxiv — Search arXiv Atom API with rate limiting and normalized output
-# Usage: search-arxiv <query> [--category CAT] [--limit N] [--sort FIELD]
+# Usage: search-arxiv <query> [--category CAT] [--limit N] [--offset N] [--sort FIELD]
 set -uo pipefail
 
 # --- Defaults ---
 QUERY=""
 CATEGORY=""
 LIMIT=20
+OFFSET=0
 SORT="submittedDate"
+FIELDS=""
+
+describe() {
+  cat <<'JSON'
+{
+  "name": "search-arxiv",
+  "version": "2.0.0",
+  "flags": [
+    {"name": "query", "type": "string", "required": true, "description": "Search query text"},
+    {"name": "--category", "type": "string", "required": false, "description": "arXiv category filter"},
+    {"name": "--limit", "type": "integer", "required": false, "default": 20, "description": "Maximum number of results to return"},
+    {"name": "--offset", "type": "integer", "required": false, "default": 0, "description": "Zero-based result offset for pagination"},
+    {"name": "--sort", "type": "string", "required": false, "default": "submittedDate", "description": "arXiv sort field"},
+    {"name": "--fields", "type": "string", "required": false, "description": "Comma-separated normalized result fields to include"}
+  ],
+  "output_fields": [
+    {"name": "title", "type": "string", "description": "Paper title"},
+    {"name": "authors", "type": "array<string>", "description": "Author names"},
+    {"name": "year", "type": "integer|null", "description": "Publication year"},
+    {"name": "citations", "type": "null", "description": "arXiv search does not provide citation counts"},
+    {"name": "doi", "type": "string|null", "description": "Digital Object Identifier"},
+    {"name": "url", "type": "string", "description": "arXiv abstract URL"},
+    {"name": "open_access_url", "type": "string|null", "description": "arXiv PDF URL when available"},
+    {"name": "abstract", "type": "string", "description": "Paper abstract"},
+    {"name": "source_id", "type": "string", "description": "Source-prefixed arXiv identifier"},
+    {"name": "offset", "type": "integer", "description": "Zero-based result offset used for pagination"}
+  ]
+}
+JSON
+}
+
+filter_result_fields() {
+  if [[ -z "$FIELDS" ]]; then
+    cat
+  else
+    jq --arg fields "$FIELDS" '
+      ($fields | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $wanted
+      | .results |= map(with_entries(select(.key as $key | $wanted | index($key))))
+    '
+  fi
+}
 
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --describe) describe; exit 0 ;;
     --category) CATEGORY="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
+    --offset) OFFSET="$2"; shift 2 ;;
     --sort) SORT="$2"; shift 2 ;;
+    --fields) FIELDS="$2"; shift 2 ;;
     --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
     *) QUERY="$1"; shift ;;
   esac
@@ -33,7 +78,7 @@ ENCODED_QUERY=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(s
 SEARCH_QUERY="all:${ENCODED_QUERY}"
 [[ -n "$CATEGORY" ]] && SEARCH_QUERY="${SEARCH_QUERY}+AND+cat:${CATEGORY}"
 
-URL="https://export.arxiv.org/api/query?search_query=${SEARCH_QUERY}&max_results=${LIMIT}&sortBy=${SORT}&sortOrder=descending"
+URL="https://export.arxiv.org/api/query?search_query=${SEARCH_QUERY}&start=${OFFSET}&max_results=${LIMIT}&sortBy=${SORT}&sortOrder=descending"
 
 # --- Fetch ---
 RESPONSE=$(curl -s --max-time 20 -w "\n%{http_code}" "$URL")
@@ -41,7 +86,14 @@ HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
 
 if [[ "$HTTP_CODE" != "200" ]]; then
-  echo '{"database":"arxiv","query":"'"$QUERY"'","total":0,"results":[],"error":"http_'"$HTTP_CODE"'"}'
+  jq -n --arg query "$QUERY" --arg error "http_${HTTP_CODE}" --argjson offset "$OFFSET" '{
+    database: "arxiv",
+    query: $query,
+    total: 0,
+    offset: $offset,
+    results: [],
+    error: $error
+  }'
   exit 1
 fi
 
@@ -53,7 +105,14 @@ TOTAL=$(echo "$BODY" | xmllint --xpath 'string(//*[local-name()="totalResults"])
 ENTRY_COUNT=$(echo "$BODY" | xmllint --xpath 'count(//*[local-name()="entry"])' - 2>/dev/null || echo "0")
 
 if [[ "$ENTRY_COUNT" == "0" || -z "$ENTRY_COUNT" ]]; then
-  echo '{"database":"arxiv","query":"'"$QUERY"'","total":0,"results":[],"error":null}'
+  jq -n --arg query "$QUERY" --argjson offset "$OFFSET" '{
+    database: "arxiv",
+    query: $query,
+    total: 0,
+    offset: $offset,
+    results: [],
+    error: null
+  }'
   exit 0
 fi
 
@@ -105,10 +164,11 @@ for i in $(seq 1 "$ENTRY_COUNT"); do
 done
 RESULTS+="]"
 
-jq -n --arg query "$QUERY" --arg total "$TOTAL" --argjson results "$RESULTS" '{
+jq -n --arg query "$QUERY" --arg total "$TOTAL" --argjson offset "$OFFSET" --argjson results "$RESULTS" '{
   database: "arxiv",
   query: $query,
   total: ($total | tonumber),
+  offset: $offset,
   results: $results,
   error: null
-}'
+}' | filter_result_fields

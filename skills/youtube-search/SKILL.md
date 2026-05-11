@@ -30,6 +30,7 @@ Generate 3-5 search variations: direct terms, audience-specific, format-specific
 ```bash
 scripts/search "photosynthesis explained" --limit 10 --subtitles-only
 scripts/search "photosynthesis" --filter views --type video --date year
+scripts/search "photosynthesis" --limit 3 --quality-rank --pretty
 ```
 
 | Flag              | Values                                |
@@ -39,6 +40,8 @@ scripts/search "photosynthesis" --filter views --type video --date year
 | `--type`          | video, playlist, channel, short, long |
 | `--subtitles-only`| (flag)                                |
 | `--channel-url`   | search within a specific channel      |
+| `--fields`        | comma-separated output fields         |
+| `--quality-rank`  | for `--limit <= 5`, deep-dive extra candidates and rank by quality |
 | `--limit/--offset`| pagination (rate-limited when >5)     |
 
 Search returns title, channel, views, duration, date. Does NOT include likes, comments, chapters, or heatmap -- those require deep-dive.
@@ -47,6 +50,8 @@ Search returns title, channel, views, duration, date. Does NOT include likes, co
 
 Merge across queries, deduplicate by video ID, rank by view count, recency, channel reputation, duration fit. Present as a table.
 
+For a small final set, prefer `scripts/search "<query>" --limit 3 --quality-rank`: it fetches extra candidates, deep-dives each one, scores quality signals with the evaluator logic, and returns the top N with deep metadata included.
+
 ### 4. Deep Dive (optional)
 
 ```bash
@@ -54,6 +59,7 @@ scripts/deep-dive "VIDEO_ID" --pretty
 ```
 
 Returns: like_count, comment_count, chapters, heatmap, captions, channel_followers, tags, full description. Shared state contract (schema_version: 1).
+Use `--fields id,title,like_count` to return only selected deep-dive fields.
 
 ### 5. Recommend
 

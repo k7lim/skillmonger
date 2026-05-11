@@ -9,10 +9,65 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 QUERY=""
 DATABASES="pubmed,crossref"
 PASSTHROUGH_ARGS=()
+FIELDS=""
+
+describe() {
+  cat <<'JSON'
+{
+  "name": "search",
+  "version": "2.0.0",
+  "flags": [
+    {"name": "query", "type": "string", "required": true, "description": "Search query text"},
+    {"name": "--databases", "type": "string", "required": false, "default": "pubmed,crossref", "description": "Comma-separated databases to search: s2, pubmed, crossref, arxiv"},
+    {"name": "--year", "type": "string", "required": false, "description": "Semantic Scholar publication year or year range filter"},
+    {"name": "--year-min", "type": "integer", "required": false, "description": "Earliest publication year for supported databases"},
+    {"name": "--year-max", "type": "integer", "required": false, "description": "Latest publication year for supported databases"},
+    {"name": "--min-citations", "type": "integer", "required": false, "description": "Semantic Scholar minimum citation count"},
+    {"name": "--fields-of-study", "type": "string", "required": false, "description": "Semantic Scholar fields of study filter"},
+    {"name": "--limit", "type": "integer", "required": false, "default": 20, "description": "Maximum number of results requested from each database"},
+    {"name": "--offset", "type": "integer", "required": false, "default": 0, "description": "Zero-based result offset passed through to each searched database"},
+    {"name": "--venue", "type": "string", "required": false, "description": "Semantic Scholar venue filter"},
+    {"name": "--category", "type": "string", "required": false, "description": "arXiv category filter"},
+    {"name": "--sort", "type": "string", "required": false, "description": "Pass-through sort option for supported databases"},
+    {"name": "--mailto", "type": "string", "required": false, "default": "skillmonger@example.com", "description": "Contact email sent to Crossref API"},
+    {"name": "--reviews-only", "type": "boolean", "required": false, "default": false, "description": "Restrict PubMed results to review articles"},
+    {"name": "--open-access", "type": "boolean", "required": false, "default": false, "description": "Restrict PubMed results to free full text papers"},
+    {"name": "--fields", "type": "string", "required": false, "description": "Comma-separated normalized result fields to include"}
+  ],
+  "output_fields": [
+    {"name": "query", "type": "string", "description": "Search query text"},
+    {"name": "total_unique", "type": "integer", "description": "Number of deduplicated papers"},
+    {"name": "sources", "type": "array<object>", "description": "Per-database total, offset, and error metadata"},
+    {"name": "results", "type": "array<object>", "description": "Deduplicated normalized paper results"},
+    {"name": "title", "type": "string", "description": "Paper title in each result item"},
+    {"name": "authors", "type": "array<string>", "description": "Author names in each result item"},
+    {"name": "year", "type": "integer|string|null", "description": "Publication year in each result item"},
+    {"name": "citations", "type": "integer|null", "description": "Citation count when available"},
+    {"name": "doi", "type": "string|null", "description": "Digital Object Identifier"},
+    {"name": "url", "type": "string|null", "description": "Paper URL"},
+    {"name": "open_access_url", "type": "string|null", "description": "Open access PDF URL when available"},
+    {"name": "abstract", "type": "string|null", "description": "Paper abstract"},
+    {"name": "source_id", "type": "string", "description": "Source-prefixed paper identifier"}
+  ]
+}
+JSON
+}
+
+filter_result_fields() {
+  if [[ -z "$FIELDS" ]]; then
+    cat
+  else
+    jq --arg fields "$FIELDS" '
+      ($fields | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != ""))) as $wanted
+      | .results |= map(with_entries(select(.key as $key | $wanted | index($key))))
+    '
+  fi
+}
 
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --describe) describe; exit 0 ;;
     --databases) DATABASES="$2"; shift 2 ;;
     --year) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --year-min) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
@@ -20,12 +75,18 @@ while [[ $# -gt 0 ]]; do
     --min-citations) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --fields-of-study) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --limit) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
+    --offset) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --venue) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --category) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --sort) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --mailto) PASSTHROUGH_ARGS+=("$1" "$2"); shift 2 ;;
     --reviews-only) PASSTHROUGH_ARGS+=("$1"); shift ;;
     --open-access) PASSTHROUGH_ARGS+=("$1"); shift ;;
+    --fields)
+      FIELDS="$2"
+      PASSTHROUGH_ARGS+=("$1" "$2,doi,source_id,citations")
+      shift 2
+      ;;
     --*) echo '{"error":"unknown_option","detail":"'"$1"'"}'; exit 1 ;;
     *) QUERY="$1"; shift ;;
   esac
@@ -73,19 +134,30 @@ for db in "${DBS[@]}"; do
   DB_NAME=$(echo "$RESULT" | jq -r '.database // "unknown"')
   DB_ERROR=$(echo "$RESULT" | jq -r '.error // "null"')
   DB_TOTAL=$(echo "$RESULT" | jq -r '.total // 0')
+  DB_OFFSET=$(echo "$RESULT" | jq -r '.offset // 0')
   DB_RESULTS=$(echo "$RESULT" | jq '.results // []')
 
-  SOURCES=$(echo "$SOURCES" | jq --arg db "$DB_NAME" --arg err "$DB_ERROR" --argjson total "$DB_TOTAL" \
-    '. + [{"database": $db, "total": $total, "error": (if $err == "null" then null else $err end)}]')
+  SOURCES=$(echo "$SOURCES" | jq --arg db "$DB_NAME" --arg err "$DB_ERROR" --argjson total "$DB_TOTAL" --argjson offset "$DB_OFFSET" \
+    '. + [{"database": $db, "total": $total, "offset": $offset, "error": (if $err == "null" then null else $err end)}]')
 
   ALL_RESULTS=$(echo "$ALL_RESULTS" | jq --argjson new "$DB_RESULTS" '. + $new')
 done
 
-# --- Deduplicate by DOI (keep first seen) ---
-DEDUPED=$(echo "$ALL_RESULTS" | jq '[
-  group_by(if .doi then .doi else .source_id end)[]
-  | .[0]
-]')
+# --- Deduplicate by DOI/source ID (keep first seen) ---
+DEDUPED=$(echo "$ALL_RESULTS" | jq '
+  reduce .[] as $item (
+    {seen: {}, results: []};
+    ($item.doi // $item.source_id // "__missing_key__" | tostring) as $key
+    | if .seen[$key] then .
+      else .seen[$key] = true | .results += [$item]
+      end
+  )
+  | .results
+')
+
+if [[ ${#DBS[@]} -gt 1 ]]; then
+  DEDUPED=$(echo "$DEDUPED" | jq 'sort_by([(.citations == null), -(.citations // 0)])')
+fi
 
 DEDUPED_COUNT=$(echo "$DEDUPED" | jq 'length')
 
@@ -100,4 +172,4 @@ jq -n \
     total_unique: $total,
     sources: $sources,
     results: $results
-  }'
+  }' | filter_result_fields

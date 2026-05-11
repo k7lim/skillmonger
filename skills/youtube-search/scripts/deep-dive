@@ -3,6 +3,7 @@
 deep-dive - Full metadata fetch for a single YouTube video.
 
 Usage: scripts/deep-dive <video-id-or-url> [--pretty]
+                                          [--fields id,title,like_count]
 
 Examples:
   scripts/deep-dive "rQ_J9WH6CGk"
@@ -18,9 +19,88 @@ import time
 import argparse
 import re
 
+SCHEMA_VERSION = "0.2.0"
+OUTPUT_FIELDS = [
+    "id",
+    "title",
+    "channel",
+    "channel_id",
+    "channel_followers",
+    "duration",
+    "view_count",
+    "like_count",
+    "comment_count",
+    "upload_date",
+    "categories",
+    "tags",
+    "description",
+    "url",
+    "thumbnail",
+    "chapters",
+    "heatmap",
+    "captions",
+]
+
 
 def build_envelope(success, data, meta):
     return {"success": success, "data": data, "meta": meta}
+
+
+def build_description_schema():
+    return {
+        "name": "deep-dive",
+        "version": SCHEMA_VERSION,
+        "flags": [
+            {
+                "name": "video",
+                "type": "string",
+                "required": True,
+                "default": None,
+                "description": "Video ID or YouTube URL to inspect.",
+            },
+            {
+                "name": "pretty",
+                "type": "bool",
+                "required": False,
+                "default": False,
+                "description": "Pretty-print JSON output.",
+            },
+            {
+                "name": "fields",
+                "type": "string",
+                "required": False,
+                "default": None,
+                "description": "Comma-separated output fields to include.",
+            },
+            {
+                "name": "describe",
+                "type": "bool",
+                "required": False,
+                "default": False,
+                "description": "Emit this machine-readable interface schema and exit.",
+            },
+        ],
+        "output_fields": [
+            {"name": "id", "type": "string", "description": "YouTube video identifier."},
+            {"name": "title", "type": "string", "description": "Video title."},
+            {"name": "channel", "type": "string", "description": "Channel display name."},
+            {"name": "channel_id", "type": "string", "description": "YouTube channel identifier."},
+            {"name": "channel_followers", "type": "int", "description": "Channel follower count when available."},
+            {"name": "duration", "type": "int", "description": "Video duration in seconds."},
+            {"name": "view_count", "type": "int", "description": "View count."},
+            {"name": "like_count", "type": "int", "description": "Like count when available."},
+            {"name": "comment_count", "type": "int", "description": "Comment count when available."},
+            {"name": "upload_date", "type": "string", "description": "Upload date formatted as YYYY-MM-DD when available."},
+            {"name": "categories", "type": "list", "description": "YouTube categories assigned to the video."},
+            {"name": "tags", "type": "list", "description": "Video tags."},
+            {"name": "description", "type": "string", "description": "Full video description."},
+            {"name": "url", "type": "string", "description": "Canonical YouTube watch URL."},
+            {"name": "thumbnail", "type": "string", "description": "Thumbnail image URL."},
+            {"name": "chapters", "type": "list", "description": "Chapter markers with title, start, and end fields."},
+            {"name": "heatmap", "type": "list", "description": "Viewer heatmap segments when available."},
+            {"name": "captions", "type": "dict", "description": "Available manual and automatic caption languages."},
+        ],
+    }
 
 
 def extract_video_id(input_str):
@@ -108,12 +188,29 @@ def normalize_video(raw):
     }
 
 
+def filter_fields(record, fields_arg):
+    if fields_arg is None:
+        return record
+
+    requested = {field.strip() for field in fields_arg.split(",") if field.strip()}
+    return {field: record[field] for field in OUTPUT_FIELDS if field in requested and field in record}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Deep-dive metadata for a YouTube video")
-    parser.add_argument("video", help="Video ID or URL")
+    parser.add_argument("video", nargs="?", help="Video ID or URL")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    parser.add_argument("--fields", help="Comma-separated output fields to include")
+    parser.add_argument("--describe", action="store_true", help="Emit machine-readable interface schema and exit")
 
     args = parser.parse_args()
+
+    if args.describe:
+        print(json.dumps(build_description_schema(), indent=2 if args.pretty else None))
+        sys.exit(0)
+
+    if not args.video:
+        parser.error("the following arguments are required: video")
 
     video_id = extract_video_id(args.video)
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -173,7 +270,7 @@ def main():
         print(json.dumps(envelope, indent=2 if args.pretty else None))
         sys.exit(2)
 
-    data = normalize_video(raw)
+    data = filter_fields(normalize_video(raw), args.fields)
 
     envelope = build_envelope(True, data, {
         "source": "yt-dlp",

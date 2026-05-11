@@ -24,9 +24,50 @@ MODE="paper"   # paper | citations | references | match | author
 FIELDS="title,authors,year,citationCount,abstract,url,externalIds,openAccessPdf"
 LIMIT=50
 
+describe() {
+  cat <<'JSON'
+{
+  "name": "lookup-s2",
+  "version": "2.0.0",
+  "flags": [
+    {"name": "id", "type": "string", "required": true, "description": "Paper identifier, title, or author name depending on mode"},
+    {"name": "--citations", "type": "boolean", "required": false, "default": false, "description": "Return papers that cite the target paper"},
+    {"name": "--references", "type": "boolean", "required": false, "default": false, "description": "Return papers referenced by the target paper"},
+    {"name": "--match", "type": "boolean", "required": false, "default": false, "description": "Find a paper by exact title match"},
+    {"name": "--author", "type": "boolean", "required": false, "default": false, "description": "Search authors by name"},
+    {"name": "--fields", "type": "string", "required": false, "default": "title,authors,year,citationCount,abstract,url,externalIds,openAccessPdf", "description": "Semantic Scholar API fields to request"},
+    {"name": "--limit", "type": "integer", "required": false, "default": 50, "description": "Maximum citations or references to return"}
+  ],
+  "output_fields": [
+    {"name": "title", "type": "string|null", "description": "Paper title for paper and match modes, or result item title for citation/reference modes"},
+    {"name": "authors", "type": "array<string>", "description": "Author names for paper results"},
+    {"name": "year", "type": "integer|null", "description": "Publication year"},
+    {"name": "citations", "type": "integer", "description": "Citation count"},
+    {"name": "doi", "type": "string|null", "description": "Digital Object Identifier"},
+    {"name": "arxiv_id", "type": "string|null", "description": "arXiv identifier for paper and match modes"},
+    {"name": "pmid", "type": "string|null", "description": "PubMed identifier for paper and match modes"},
+    {"name": "url", "type": "string|null", "description": "Semantic Scholar paper URL"},
+    {"name": "open_access_url", "type": "string|null", "description": "Open access PDF URL when available"},
+    {"name": "abstract", "type": "string|null", "description": "Paper abstract"},
+    {"name": "source_id", "type": "string", "description": "Source-prefixed Semantic Scholar paper identifier"},
+    {"name": "paper_id", "type": "string", "description": "Requested paper identifier for citation/reference modes"},
+    {"name": "type", "type": "string", "description": "Relationship type for citation/reference modes"},
+    {"name": "total", "type": "integer", "description": "Total result count for citation/reference and author modes"},
+    {"name": "results", "type": "array<object>", "description": "Citation, reference, or author result items"},
+    {"name": "name", "type": "string", "description": "Author name for author mode"},
+    {"name": "author_id", "type": "string", "description": "Semantic Scholar author identifier for author mode"},
+    {"name": "citation_count", "type": "integer", "description": "Author citation count for author mode"},
+    {"name": "h_index", "type": "integer", "description": "Author h-index for author mode"},
+    {"name": "paper_count", "type": "integer", "description": "Author paper count for author mode"}
+  ]
+}
+JSON
+}
+
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --describe) describe; exit 0 ;;
     --citations) MODE="citations"; shift ;;
     --references) MODE="references"; shift ;;
     --match) MODE="match"; shift ;;

@@ -12,6 +12,44 @@ import sys
 import json
 from datetime import datetime, timezone
 
+SCHEMA_VERSION = "0.2.0"
+
+
+def build_description_schema():
+    return {
+        "name": "evaluate",
+        "version": SCHEMA_VERSION,
+        "flags": [
+            {
+                "name": "file",
+                "type": "string",
+                "required": False,
+                "default": None,
+                "description": "Optional JSON file from search or deep-dive output.",
+            },
+            {
+                "name": "--help",
+                "type": "bool",
+                "required": False,
+                "default": False,
+                "description": "Show usage help and exit.",
+            },
+            {
+                "name": "--describe",
+                "type": "bool",
+                "required": False,
+                "default": False,
+                "description": "Emit this machine-readable interface schema and exit.",
+            },
+        ],
+        "output_fields": [
+            {"name": "outcome", "type": "int", "description": "Overall quality score from 1 to 5."},
+            {"name": "note", "type": "string", "description": "Short human-readable scoring summary."},
+            {"name": "checks", "type": "dict", "description": "Structured scoring checks and supporting metrics."},
+        ],
+    }
+
+
 def days_since(date_str):
     """Days since YYYY-MM-DD date string."""
     if not date_str:
@@ -108,6 +146,10 @@ def score_single_video(v):
 
 
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "--describe":
+        print(json.dumps(build_description_schema()))
+        sys.exit(0)
+
     # Handle --help explicitly
     if len(sys.argv) >= 2 and sys.argv[1] in ("--help", "-h"):
         print(__doc__.strip())
