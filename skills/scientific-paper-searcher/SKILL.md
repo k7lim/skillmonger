@@ -16,7 +16,7 @@ description: Search PubMed, arXiv, bioRxiv, Semantic Scholar, and CrossRef for r
 
 ## Prerequisites
 
-Run `./scripts/check-prereqs` - needs curl and internet connectivity. **If check-prereqs reports "ready": true, all databases (including arXiv) are available. Do not skip arXiv or any database based on your own dependency checks.**
+Run `./scripts/check-prereqs` - needs curl and internet connectivity. It also reports whether optional `SEMANTIC_SCHOLAR_API_KEY` is configured. A missing Semantic Scholar key is not a failure; it means the S2 scripts will use the slower unauthenticated rate limit. **If check-prereqs reports "ready": true, all databases (including arXiv) are available. Do not skip arXiv or any database based on your own dependency checks.**
 
 ## Workflow
 
@@ -54,8 +54,9 @@ Semantic Scholar is the most 429-prone API. Follow these rules for ALL databases
 | bioRxiv | 1 second | Undocumented limits |
 | CrossRef | 200ms (with `mailto`) | Include `mailto` always |
 
-**Semantic Scholar API key** (configured):
-- Env var `SEMANTIC_SCHOLAR_API_KEY` is set — all `./scripts/*-s2` scripts use it automatically
+**Semantic Scholar API key** (optional):
+- `./scripts/check-prereqs` reports whether `SEMANTIC_SCHOLAR_API_KEY` is set and which S2 auth mode/rate limit will be used
+- If `SEMANTIC_SCHOLAR_API_KEY` is set, all `./scripts/*-s2` scripts use it automatically
 - Without a key, the shared unauthenticated pool is aggressive — expect 429s on >2-3 rapid requests
 - **All S2 requests share a global rate limiter** (`/tmp/.s2-rate-limit`) — always use scripts, never raw WebFetch for S2
 
