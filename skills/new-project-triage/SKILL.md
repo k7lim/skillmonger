@@ -1,11 +1,11 @@
 ---
 name: new-project-triage
-description: Helps decide where to file a new project idea in ~/Development/. Use when the user has a new project idea, says "where should I put this", "new project", "I have an idea", or is hesitating about where to start something.
+description: Helps decide where a new project idea belongs in ~/Development/, creates the project directory, and copies the user's original notes into it. Use when the user has a new project idea, says "where should I put this", "new project", "I have an idea", "set this up", or is hesitating about where to start something.
 ---
 
 # New Project Triage
 
-You help Kevin quickly decide where a new project idea belongs in his development folder structure, so he can skip the "where to file it" paralysis and get started.
+You help Kevin quickly decide where a new project idea belongs in his development folder structure, create the directory, and preserve the original notes so he can start working immediately.
 
 ## Directory Map
 
@@ -54,30 +54,56 @@ When the user describes an idea, walk through this:
    - Yes → `sandbox/projects/`
    - Not yet / just exploring → `sandbox/research/`
 
+If the idea is ambiguous between `research/` and `projects/`, default to `research/`; it is easier to promote than to demote.
+
+## Execution Flow
+
+1. Pick the target parent directory from the decision flow.
+2. Generate a concise kebab-case folder name from the user's idea.
+3. Create the project directory and write the user's original notes to `NOTES.md`.
+4. Reply with the created path, the placement reason, and the notes file path.
+
+Use `scripts/create-project.sh` for step 3:
+
+```bash
+printf '%s\n' '<original user notes>' | /path/to/new-project-triage/scripts/create-project.sh ~/Development/sandbox/projects/folder-name
+```
+
+Rules for notes:
+
+- Preserve the user's project notes as faithfully as possible in `NOTES.md`.
+- If the user pasted a note block, copy that block verbatim.
+- If the request is conversational rather than a note block, write the user's project description in their own words.
+- Do not overwrite an existing notes file; the script will create a timestamped `NOTES-*.md` fallback when needed.
+
+Rules for directory creation:
+
+- Only create directories under `~/Development/`.
+- If the exact folder already exists, inspect it before proceeding. If it appears to be the same project, add a new timestamped notes file there. If it appears unrelated, choose a more specific folder name.
+- Do not create a git repository, install packages, clone repos, or scaffold app code unless the user explicitly asks.
+
 ## Response Format
 
-Be fast and decisive. Respond with:
+Be fast and decisive. After creating the directory, respond with:
 
-1. **The path** — one line, the full directory path
+1. **Created path** — one line, the full directory path
 2. **Why** — one sentence justification
-3. **Suggested folder name** — kebab-case, concise
-4. **Bootstrap command** — `mkdir -p` + `cd` one-liner to get started
+3. **Notes copied to** — the notes file path
+4. **Next command** — `cd` one-liner
 
 Example:
 
 > **`~/Development/sandbox/projects/recipe-ocr`**
 > It's a buildable tool with a clear goal (OCR recipes from photos).
 > ```bash
-> mkdir -p ~/Development/sandbox/projects/recipe-ocr && cd ~/Development/sandbox/projects/recipe-ocr
+> cd ~/Development/sandbox/projects/recipe-ocr
 > ```
-
-If the idea is ambiguous between `research/` and `projects/`, default to `research/` — it's easier to promote than to demote. Say so briefly.
 
 ---
 
 ## After Execution
 
-Self-assess whether the response made a clear placement decision and included the required path, reason, folder name, and bootstrap command.
+Self-assess whether the skill made a clear placement decision, created the directory, preserved the original notes, and reported the created path.
 
 Log to `FEEDBACK.jsonl`:
 

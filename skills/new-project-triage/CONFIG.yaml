@@ -2,9 +2,9 @@
 
 skill:
   name: new-project-triage
-  version: 1.0.0
+  version: 1.1.0
   created: 2026-03-11
-  updated: 2026-05-09
+  updated: 2026-05-19
   author: kevin
 
 triggers:
@@ -15,6 +15,9 @@ triggers:
     - "where does this go"
     - "where to file"
     - "start a new project"
+    - "set this up"
+    - "make a project folder"
+    - "create a project folder"
     - "new repo"
     - "where to put"
   keywords:
@@ -25,7 +28,8 @@ triggers:
 
 dependencies:
   tools: []
-  cli: []
+  cli:
+    - bash
   permissions: []
 
 loading:
