@@ -1,6 +1,6 @@
 ---
 name: ralph-orchestrator
-description: Orchestrate a one-at-a-time Ralph relay over BEADS issues. Use when asked to run or manage a Ralph issue relay: take the first `bd ready` issue, delegate implementation to exactly one subagent at a time, personally QA the result, close only when verified, and hand off cleanly when context or token budget is exhausted.
+description: Orchestrate a one-at-a-time Ralph relay over BEADS issues. Use when asked to run or manage a Ralph issue relay take the first `bd ready` issue, delegate implementation to exactly one subagent at a time, personally QA the result, close only when verified, and hand off cleanly when context or token budget is exhausted.
 ---
 
 # Ralph Orchestrator
