@@ -1,0 +1,39 @@
+skill:
+  name: review
+  version: 1.0.0
+  created: 2026-05-26
+  updated: 2026-05-26
+  author: kevin
+
+triggers:
+  phrases:
+    - "review since"
+    - "review this branch"
+    - "review my changes"
+    - "review this PR"
+  keywords:
+    - review
+    - diff
+    - standards
+    - spec
+
+dependencies:
+  tools:
+    - git
+    - issue-tracker
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
