@@ -1,0 +1,1 @@
+{"ts":"2026-05-27T20:39:04Z","skill":"diagnose","version":"1.0.0","prompt":"Diagnose ralph-orchestrator chat compaction behavior from pj chat example","outcome":4,"note":"Reproduced the symptom from saved chat and patched the skill; no automated regression harness exists for runtime compaction behavior.","source":"llm","schema_version":1}

@@ -19,14 +19,35 @@ Your job is routing and QA. Subagents implement. Never trust a subagent's "done"
 - Close an issue only after your QA passes.
 - If QA fails, keep the issue open and send only the issue plus QA gaps to a fresh subagent.
 - If context gets bulky, stop the relay and write a fresh-orchestrator handoff.
+- Do not rely on the platform's built-in chat compaction as the relay continuation mechanism. If the chat is compacted before a handoff is written, treat that as a missed guardrail.
 
-## Token Budget
+## Context Budget Guardrail
 
-If the user provides a token budget:
+The relay must proactively hand off before the runtime's built-in chat compaction is likely to fire.
 
-1. Start a goal/budget tracker if the runtime provides one.
-2. Check remaining budget after every orchestrator turn, including after subagent returns and after QA.
-3. When remaining budget is zero or too low for one more safe issue cycle, invoke the `handoff` skill and stop.
+At relay start:
+
+1. Check the runtime's goal/token-budget status if a tool such as `get_goal` is available.
+2. If the user supplied an explicit token budget, start the runtime budget tracker if policy permits.
+3. If no active tracker exists, record `token budget: unavailable; fallback cycle cap active` in the ledger.
+
+Check budget/status at every relay boundary:
+
+- before claiming a ready issue
+- after a subagent returns
+- after QA
+- after closing, committing, or pushing an issue
+- before spawning any repair subagent
+
+Stop and invoke the `handoff` skill before taking more work when any of these are true:
+
+- active budget remaining is below 25%
+- active budget remaining is too low for one more safe issue cycle
+- no active budget tracker exists and 4 issue cycles have been attempted in this chat
+- no active budget tracker exists and the current issue required HITL, live-container validation, heavy debugging, or more than one repair attempt
+- the ledger is no longer small enough to summarize in about 250 words
+
+When the guardrail triggers, finish only the minimum needed to leave the repository coherent for the current issue. Do not claim the next `bd ready` issue, do not spawn another subagent, and do not wait for built-in compaction.
 
 For handoff, include:
 
@@ -49,25 +70,28 @@ Before starting the relay:
 
 Repeat until `bd ready` is empty:
 
-1. Run `bd ready`.
-2. If empty, report done.
-3. Pick the first ready issue.
-4. Read issue details and only the needed code/docs.
-5. Spawn exactly one subagent using the packet format below.
-6. On return, QA yourself:
+1. Check the context budget guardrail. If handoff is due, invoke the `handoff` skill and stop.
+2. Run `bd ready`.
+3. If empty, report done.
+4. Pick the first ready issue.
+5. Check the context budget guardrail again before claiming or spawning work. If handoff is due, invoke the `handoff` skill and stop.
+6. Read issue details and only the needed code/docs.
+7. Spawn exactly one subagent using the packet format below.
+8. On return, QA yourself:
    - inspect the diff
    - run focused tests/checks
    - verify acceptance criteria
    - check for unrelated changes
-7. If QA passes:
+9. If QA passes:
    - close the bd issue with a concise note
    - update the ledger
-   - check token budget
+   - check the context budget guardrail
    - continue the loop
-8. If QA fails:
+10. If QA fails:
    - keep the issue open
    - update the ledger with concrete gaps
-   - check token budget
+   - check the context budget guardrail
+   - if handoff is due, invoke the `handoff` skill and stop with the QA gaps captured
    - spawn a fresh subagent with only the issue and QA gaps
    - repeat QA
 
@@ -127,6 +151,7 @@ commands run:
 QA pass/fail:
 open gaps:
 token budget:
+handoff due?:
 ```
 
 Keep the ledger concise. Do not paste subagent transcripts, large diffs, or full test logs unless a failure detail is needed for the next repair packet.
@@ -158,8 +183,10 @@ If the local BEADS command uses different close syntax, inspect `bd close --help
 Use the `handoff` skill when:
 
 - token budget is exhausted or too low for one more issue cycle
+- the fallback cycle cap or high-cost-issue rule triggers
 - context has become bulky
 - the relay must stop mid-issue
+- the next action would otherwise rely on built-in chat compaction
 
 The handoff must include:
 
