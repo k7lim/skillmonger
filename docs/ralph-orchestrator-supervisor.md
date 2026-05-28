@@ -650,6 +650,32 @@ Approved canary command, after the sandbox wrapper exists:
 /Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh --harness codex --require-clean-start --max-hops 1 --max-issues-total 1 /Users/kevin/Development/sandbox/ralph-supervisor-canary
 ```
 
+The approved wrapper is intentionally sandbox-only:
+
+- Location: `/Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh`.
+- Purpose: canary launcher that execs the experiment supervisor from the host checkout.
+- Safety boundary: the wrapper does not grant safety by itself; `run-supervisor.sh` must still resolve the target workspace and refuse yolo mode outside `/Users/kevin/Development/sandbox/...` before launching Codex.
+- Promotion status: do not copy the wrapper into the host repo, shell aliases, or production paths until a real canary result is recorded and reviewed.
+
+### 2026-05-28: bounded real Codex canary passed
+
+Run:
+
+```bash
+/Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh --harness codex --require-clean-start --max-hops 1 --max-issues-total 1 --run-id 20260528T-a0b8-pass /Users/kevin/Development/sandbox/ralph-supervisor-canary-a0b8
+```
+
+Result:
+
+- Supervisor classification: `handoff`.
+- Supervisor exit: `0`.
+- Run directory: `/Users/kevin/Development/sandbox/ralph-supervisor-canary-a0b8/.ralph-orchestrator-runs/20260528T-a0b8-pass/`.
+- Handoff: `/private/tmp/ralph-orchestrator-20260528T-a0b8-pass-hop-1.md`.
+- Validation: `hop-001/validation.txt` reported `PASS minimum handoff shape is usable`.
+- Work completed: one Codex orchestrator hop used one worker subagent, created `canary.txt`, verified `./check.sh`, closed `RSC-b1x`, and stopped at the supervisor's `--max-issues-total 1` bound.
+
+Rollout recommendation: proceed only to limited sandbox rollout for the next Ralph supervisor trial, with the same yolo path gate and wrapper placement. Do not promote the wrapper or supervisor pattern into host production paths until a two-hop sandbox canary also passes.
+
 ## Acceptance Criteria
 
 - Supervisor refuses yolo mode outside `~/Development/sandbox/...`.

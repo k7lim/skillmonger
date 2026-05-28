@@ -18,6 +18,7 @@ Options:
   --max-issues-total N
   --max-rate-limit-retries N
   --rate-limit-base-sleep SECONDS
+  --bd-lock-timeout SECONDS
   --handoff-dir DIR
   --run-id ID
   --validate-cmd CMD
@@ -136,6 +137,11 @@ Continue or start the Ralph relay for this workspace.
 Run id: $RUN_ID
 Hop: $hop
 Expected handoff path: $handoff_path
+Supervisor limits:
+- Max hops: $MAX_HOPS
+- Max issues total for this supervisor run: $MAX_ISSUES_TOTAL
+
+If max issues total is greater than 0, do not process, close, or otherwise advance more than that many BEADS issues across the whole supervisor run. Stop with the required handoff once the limit is reached.
 
 If a prior handoff is supplied, read it first and do not reread the previous chat:
 $previous_handoff
@@ -143,6 +149,46 @@ $previous_handoff
 No prior handoff is expected for hop 1. If the placeholder above is empty or says none, start from the workspace state and the BEADS queue.
 
 Use one worker subagent at a time. Process multiple BEADS issues until the context-budget guardrail says handoff is due. When handoff is due, write the expected handoff path and stop.
+
+When writing the expected handoff, use this exact machine-validated shape. Keep field values plain text with no Markdown backticks:
+
+# Ralph Orchestrator Handoff
+
+Workspace: $WORKSPACE
+Run id: $RUN_ID
+Hop: $hop
+Previous hop status: handoff
+Built-in compaction avoided: yes
+
+## BEADS State
+- Current issue: <id and title, or none>
+- Next issue: <id and title, or none>
+- Ready issues remaining: <count or command/result>
+- In-progress issues: <ids or none>
+
+## Ledger
+- <compact issue-cycle summary>
+
+## QA
+- Result: <passed|failed|not-run|blocked>
+- Evidence: <commands or inspection>
+- Gaps: <remaining uncertainty or none>
+
+## Repository State
+- Branch: <branch>
+- Git status: <clean or exact dirty summary>
+- Staged files: <files or none>
+- Uncommitted files: <files or none>
+
+## Next Step
+Run:
+
+\`\`\`bash
+<exact next command, or true if no next command remains>
+\`\`\`
+
+Relevant files:
+- <path>
 EOF_PROMPT
 }
 
@@ -239,7 +285,98 @@ detect_rate_limit_text() {
 }
 
 final_says_complete() {
-  [[ -f "$HOP_DIR/final.md" ]] && grep -Eiq 'Status:[[:space:]]*complete|relay complete' "$HOP_DIR/final.md"
+  [[ -f "$HOP_DIR/final.md" ]] && grep -Eiq 'Status:[[:space:]]*complete|relay complete|completed the bounded Ralph relay|completed .*Ralph relay' "$HOP_DIR/final.md"
+}
+
+iso_now() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+describe_bd_lock() {
+  if [[ -f "$BD_LOCK_DIR/owner" ]]; then
+    echo "Ralph supervisor bd lock owner: $(cat "$BD_LOCK_DIR/owner" 2>/dev/null)"
+  fi
+  if [[ -e "$WORKSPACE/.beads/embeddeddolt/.lock" ]]; then
+    echo "Embedded Dolt lock: $(ls -l "$WORKSPACE/.beads/embeddeddolt/.lock" 2>/dev/null)"
+  fi
+}
+
+with_bd_process_lock() {
+  local waited=0
+
+  while ! mkdir "$BD_LOCK_DIR" 2>/dev/null; do
+    if [[ "$waited" -ge "$BD_LOCK_WAIT_SECONDS" ]]; then
+      echo "INFRA: timed out waiting for serialized bd command lock." >&2
+      describe_bd_lock >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  printf 'pid=%s cwd=%s command=%s since=%s\n' "$$" "$WORKSPACE" "bd $*" "$(iso_now)" > "$BD_LOCK_DIR/owner" 2>/dev/null || true
+  "$@"
+  local rc=$?
+  rm -f "$BD_LOCK_DIR/owner" 2>/dev/null || true
+  rmdir "$BD_LOCK_DIR" 2>/dev/null || true
+  return "$rc"
+}
+
+bd_cmd() {
+  local tmp rc waited sleep_for
+
+  tmp="$(mktemp -t ralph-supervisor-bd.XXXXXX)"
+  waited=0
+
+  while true; do
+    set +e
+    (
+      cd "$WORKSPACE"
+      with_bd_process_lock bd "$@"
+    ) >"$tmp" 2>&1
+    rc=$?
+    set -e
+
+    if [[ "$rc" -eq 0 ]]; then
+      cat "$tmp"
+      rm -f "$tmp"
+      return 0
+    fi
+
+    if grep -qi 'another process holds the exclusive lock' "$tmp"; then
+      if [[ "$waited" -ge "$BD_EMBEDDED_LOCK_WAIT_SECONDS" ]]; then
+        echo "INFRA: bd embedded Dolt lock persisted after ${BD_EMBEDDED_LOCK_WAIT_SECONDS}s: bd $*" >&2
+        cat "$tmp" >&2
+        describe_bd_lock >&2
+        rm -f "$tmp"
+        return "$rc"
+      fi
+      sleep_for=$((1 + waited / 5))
+      sleep "$sleep_for"
+      waited=$((waited + sleep_for))
+      continue
+    fi
+
+    cat "$tmp" >&2
+    rm -f "$tmp"
+    return "$rc"
+  done
+}
+
+ready_work_state() {
+  local ready_json="$HOP_DIR/bd-ready.json"
+  local ready_stderr="$HOP_DIR/bd-ready.stderr"
+
+  if ! bd_cmd ready --json > "$ready_json" 2> "$ready_stderr"; then
+    echo "unknown"
+    return 0
+  fi
+
+  if grep -Eq '"id"[[:space:]]*:' "$ready_json"; then
+    echo "yes"
+  else
+    echo "no"
+  fi
 }
 
 fake_ready_work_remains() {
@@ -261,6 +398,10 @@ validate_handoff_minimum() {
   local handoff="$1"
   local failures=0
   local pattern
+  local status_output
+  local git_status_line
+  local staged_line
+  local uncommitted_line
 
   {
     echo "minimum handoff validation"
@@ -295,9 +436,33 @@ validate_handoff_minimum() {
     fi
   done
 
+  if grep -Fxq "Built-in compaction avoided: no" "$handoff" 2>/dev/null; then
+    echo "WARN built-in compaction avoidance was not preserved" >> "$HOP_DIR/validation.txt"
+  elif grep -Fxq "Built-in compaction avoided: unknown" "$handoff" 2>/dev/null; then
+    echo "WARN built-in compaction avoidance is unknown" >> "$HOP_DIR/validation.txt"
+  fi
+
   if grep -Eq '^Workspace: .+' "$handoff" && ! grep -Fxq "Workspace: $WORKSPACE" "$handoff"; then
     echo "FAIL workspace does not match supervisor workspace" >> "$HOP_DIR/validation.txt"
     failures=$((failures + 1))
+  fi
+
+  if git -C "$WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    status_output="$(git -C "$WORKSPACE" status --porcelain --untracked-files=all)"
+    if [[ -n "$status_output" ]]; then
+      git_status_line="$(grep -E '^- Git status: ' "$handoff" | head -n 1 || true)"
+      staged_line="$(grep -E '^- Staged files: ' "$handoff" | head -n 1 || true)"
+      uncommitted_line="$(grep -E '^- Uncommitted files: ' "$handoff" | head -n 1 || true)"
+
+      if [[ "$git_status_line" =~ ^-\ Git\ status:\ clean[[:space:]]*$ ]]; then
+        echo "FAIL workspace is dirty, but handoff says git status is clean" >> "$HOP_DIR/validation.txt"
+        failures=$((failures + 1))
+      fi
+      if [[ "$staged_line" =~ ^-\ Staged\ files:\ none([[:space:]].*)?$ && "$uncommitted_line" =~ ^-\ Uncommitted\ files:\ none([[:space:]].*)?$ ]]; then
+        echo "FAIL workspace is dirty, but handoff records no staged or uncommitted files" >> "$HOP_DIR/validation.txt"
+        failures=$((failures + 1))
+      fi
+    fi
   fi
 
   if [[ "$failures" -eq 0 ]]; then
@@ -316,9 +481,14 @@ validate_handoff_for_continuation() {
   fi
 }
 
+validation_has_warnings() {
+  [[ -f "$HOP_DIR/validation.txt" ]] && grep -Eq '^WARN ' "$HOP_DIR/validation.txt"
+}
+
 classify_result() {
   local harness_exit="$1"
   local ready_work_remains="1"
+  local ready_state="yes"
 
   if ! agent_session_started && [[ "$harness_exit" -ne 0 ]]; then
     printf 'fatal_infra\n'
@@ -330,13 +500,34 @@ classify_result() {
     return 0
   fi
 
-  if [[ "$HARNESS" == "fake" ]] && ! fake_ready_work_remains && final_says_complete; then
+  if [[ "$HARNESS" == "fake" ]]; then
+    if fake_ready_work_remains; then
+      ready_state="yes"
+    else
+      ready_state="no"
+    fi
+  else
+    ready_state="$(ready_work_state)"
+    if [[ "$ready_state" == "unknown" ]]; then
+      printf 'fatal_infra\n'
+      return 0
+    fi
+  fi
+
+  if [[ "$ready_state" == "no" ]] && final_says_complete; then
+    if [[ -f "$EXPECTED_HANDOFF" ]]; then
+      validate_handoff_for_continuation || true
+    fi
     printf 'complete\n'
     return 0
   fi
 
   if [[ -f "$EXPECTED_HANDOFF" ]]; then
     if validate_handoff_for_continuation; then
+      if validation_has_warnings; then
+        printf 'bad_handoff\n'
+        return 0
+      fi
       if handoff_requests_manual_intervention; then
         printf 'manual_intervention\n'
       else
@@ -347,6 +538,8 @@ classify_result() {
     fi
     return 0
   fi
+
+  validate_handoff_for_continuation || true
 
   if [[ "$HARNESS" == "fake" ]]; then
     if fake_ready_work_remains; then
@@ -414,6 +607,50 @@ run_fake_harness() {
   esac
 }
 
+run_codex_harness() {
+  local prompt
+  local harness_exit
+
+  prompt="$(<"$HOP_DIR/prompt.md")"
+
+  set +e
+  codex exec \
+    --dangerously-bypass-approvals-and-sandbox \
+    --ignore-rules \
+    --json \
+    --skip-git-repo-check \
+    -C "$WORKSPACE" \
+    --output-last-message "$HOP_DIR/final.md" \
+    -- "$prompt" \
+    > "$HOP_DIR/stream.jsonl" \
+    2> "$HOP_DIR/stderr.txt"
+  harness_exit="$?"
+  set -e
+
+  cp "$HOP_DIR/stream.jsonl" "$HOP_DIR/stdout.txt"
+
+  if [[ ! -f "$HOP_DIR/final.md" ]]; then
+    {
+      echo "Codex did not write an output-last-message file."
+      echo
+      echo "Last stream events:"
+      tail -n 80 "$HOP_DIR/stream.jsonl" 2>/dev/null || true
+    } > "$HOP_DIR/final.md"
+  fi
+
+  if [[ -f "$EXPECTED_HANDOFF" ]]; then
+    mkdir -p "$(dirname "$EXPECTED_HANDOFF")"
+    ln -sf "$EXPECTED_HANDOFF" "$HOP_DIR/handoff.md"
+  fi
+
+  {
+    printf 'codex_hop_dir=%s\n' "$HOP_DIR"
+    printf 'codex_harness_exit=%s\n' "$harness_exit"
+  } >> "$RUN_DIR/supervisor.log"
+
+  return "$harness_exit"
+}
+
 HARNESS="codex"
 SCENARIO="complete"
 MODE="no-budget"
@@ -422,6 +659,9 @@ MAX_HOPS="8"
 MAX_ISSUES_TOTAL="0"
 MAX_RATE_LIMIT_RETRIES="3"
 RATE_LIMIT_BASE_SLEEP="0"
+BD_LOCK_DIR="${BD_LOCK_DIR:-/tmp/ralph-supervisor-bd.lock}"
+BD_LOCK_WAIT_SECONDS="15"
+BD_EMBEDDED_LOCK_WAIT_SECONDS="20"
 HANDOFF_DIR="/private/tmp"
 RUN_ID="$(timestamp_run_id)"
 VALIDATE_CMD=""
@@ -504,6 +744,15 @@ while [[ $# -gt 0 ]]; do
       RATE_LIMIT_BASE_SLEEP="${1#*=}"
       shift
       ;;
+    --bd-lock-timeout)
+      [[ $# -ge 2 ]] || die_usage "--bd-lock-timeout requires a value"
+      BD_EMBEDDED_LOCK_WAIT_SECONDS="$2"
+      shift 2
+      ;;
+    --bd-lock-timeout=*)
+      BD_EMBEDDED_LOCK_WAIT_SECONDS="${1#*=}"
+      shift
+      ;;
     --handoff-dir)
       [[ $# -ge 2 ]] || die_usage "--handoff-dir requires a value"
       HANDOFF_DIR="$2"
@@ -582,6 +831,7 @@ is_positive_integer "$MAX_HOPS" || die_usage "--max-hops must be a positive inte
 is_positive_integer "$MAX_ISSUES_TOTAL" || [[ "$MAX_ISSUES_TOTAL" == "0" ]] || die_usage "--max-issues-total must be 0 or a positive integer"
 is_non_negative_integer "$MAX_RATE_LIMIT_RETRIES" || die_usage "--max-rate-limit-retries must be 0 or a positive integer"
 is_non_negative_integer "$RATE_LIMIT_BASE_SLEEP" || die_usage "--rate-limit-base-sleep must be 0 or a positive integer"
+is_non_negative_integer "$BD_EMBEDDED_LOCK_WAIT_SECONDS" || die_usage "--bd-lock-timeout must be 0 or a positive integer"
 
 [[ -n "$RUN_ID" ]] || die_usage "--run-id must not be empty"
 [[ -n "$HANDOFF_DIR" ]] || die_usage "--handoff-dir must not be empty"
@@ -624,6 +874,8 @@ write_run_env "$RUN_DIR/run.env"
   printf 'mode=%s\n' "$MODE"
   printf 'max_rate_limit_retries=%s\n' "$MAX_RATE_LIMIT_RETRIES"
   printf 'rate_limit_base_sleep=%s\n' "$RATE_LIMIT_BASE_SLEEP"
+  printf 'bd_lock_dir=%s\n' "$BD_LOCK_DIR"
+  printf 'bd_embedded_lock_wait_seconds=%s\n' "$BD_EMBEDDED_LOCK_WAIT_SECONDS"
   printf 'dry_run=%s\n' "$DRY_RUN"
   printf 'no_yolo=%s\n' "$NO_YOLO"
   printf 'require_clean_start=%s\n' "$REQUIRE_CLEAN_START"
@@ -705,5 +957,73 @@ if [[ "$HARNESS" == "fake" ]]; then
   exit 0
 fi
 
-echo "harness execution is not implemented in this dry-run supervisor skeleton" >&2
-exit 14
+if [[ "$HARNESS" != "codex" ]]; then
+  echo "live harness execution is implemented only for --harness codex; unsupported live harness: $HARNESS" >&2
+  exit 14
+fi
+
+HOP=1
+RATE_LIMIT_RETRIES_USED=0
+
+while [[ "$HOP" -le "$MAX_HOPS" ]]; do
+  ATTEMPT=1
+
+  while :; do
+    set_hop_paths "$HOP" "$ATTEMPT"
+    mkdir -p "$HOP_DIR"
+    write_prompt "$HOP_DIR/prompt.md" "$HOP" "$EXPECTED_HANDOFF" "$PREVIOUS_HANDOFF"
+
+    HARNESS_EXIT=0
+    run_codex_harness || HARNESS_EXIT="$?"
+    CLASSIFICATION="$(classify_result "$HARNESS_EXIT")"
+    log_supervisor "hop=$HOP attempt=$ATTEMPT classification=$CLASSIFICATION harness_exit=$HARNESS_EXIT"
+
+    case "$CLASSIFICATION" in
+      complete)
+        printf 'hop %d: complete\n' "$HOP"
+        exit 0
+        ;;
+      handoff)
+        printf 'hop %d: handoff, validation passed\n' "$HOP"
+        PREVIOUS_HANDOFF="$EXPECTED_HANDOFF"
+        if [[ "$HOP" -ge "$MAX_HOPS" ]]; then
+          log_supervisor "max_hops_reached=$MAX_HOPS final_classification=handoff"
+          exit 0
+        fi
+        HOP=$((HOP + 1))
+        break
+        ;;
+      manual_intervention)
+        printf 'hop %d: manual_intervention, validation passed\n' "$HOP"
+        print_failure_context "$CLASSIFICATION"
+        ;;
+      rate_limited)
+        if [[ "$RATE_LIMIT_RETRIES_USED" -lt "$MAX_RATE_LIMIT_RETRIES" ]]; then
+          RATE_LIMIT_RETRIES_USED=$((RATE_LIMIT_RETRIES_USED + 1))
+          SLEEP_SECONDS="$(rate_limit_sleep_seconds "$RATE_LIMIT_RETRIES_USED")"
+          log_supervisor "rate_limit_retry=$RATE_LIMIT_RETRIES_USED max=$MAX_RATE_LIMIT_RETRIES sleep_seconds=$SLEEP_SECONDS preserved_hop_dir=$HOP_DIR"
+          printf 'hop %d: rate_limited, retry %d/%d\n' "$HOP" "$RATE_LIMIT_RETRIES_USED" "$MAX_RATE_LIMIT_RETRIES"
+          if [[ "$SLEEP_SECONDS" -gt 0 ]]; then
+            sleep "$SLEEP_SECONDS"
+          fi
+          ATTEMPT=$((ATTEMPT + 1))
+          continue
+        fi
+        log_supervisor "rate_limit_retry_budget_exhausted=$MAX_RATE_LIMIT_RETRIES preserved_hop_dir=$HOP_DIR"
+        printf 'hop %d: rate_limited, retry budget exhausted\n' "$HOP"
+        print_failure_context "$CLASSIFICATION"
+        ;;
+      bad_handoff|agent_failure|fatal_infra)
+        printf 'hop %d: %s\n' "$HOP" "$CLASSIFICATION"
+        print_failure_context "$CLASSIFICATION"
+        ;;
+      *)
+        printf 'hop %d: agent_failure\n' "$HOP"
+        print_failure_context "agent_failure"
+        ;;
+    esac
+  done
+done
+
+log_supervisor "max_hops_reached=$MAX_HOPS"
+exit 0

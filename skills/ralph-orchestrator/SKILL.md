@@ -211,6 +211,48 @@ The handoff must include:
 - next command
 - likely relevant files
 
+When a shell supervisor provides an `Expected handoff path`, write that path using the supervisor-validated shape below. Keep field values as plain text, with no Markdown backticks around paths, ids, statuses, or counts.
+
+~~~markdown
+# Ralph Orchestrator Handoff
+
+Workspace: <absolute path>
+Run id: <run-id>
+Hop: <n>
+Previous hop status: handoff
+Built-in compaction avoided: yes
+
+## BEADS State
+- Current issue: <id and title, or none>
+- Next issue: <id and title, or none>
+- Ready issues remaining: <count or command/result>
+- In-progress issues: <ids or none>
+
+## Ledger
+- <compact issue-cycle summary>
+
+## QA
+- Result: <passed|failed|not-run|blocked>
+- Evidence: <commands or inspection>
+- Gaps: <remaining uncertainty or none>
+
+## Repository State
+- Branch: <branch>
+- Git status: <clean or exact dirty summary>
+- Staged files: <files or none>
+- Uncommitted files: <files or none>
+
+## Next Step
+Run:
+
+```bash
+<exact next command, or true if no next command remains>
+```
+
+Relevant files:
+- <path>
+~~~
+
 ---
 
 ## After Execution
