@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 SCHEMA_VERSION = 1
@@ -18,6 +20,16 @@ PROVIDERS = ("youtube", "bilibili")
 SENSORS = ("search", "probe", "transcript", "comments", "sites")
 ACTUATORS = ("download", "clip", "explore")
 COMMANDS = SENSORS + ACTUATORS
+YOUTUBE_COMMENT_SORT = {"top": "top", "new": "new"}
+YOUTUBE_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com",
+}
 
 COMMON_FIELDS = {
     "id",
@@ -325,6 +337,149 @@ def validate_args(command, args):
             raise ContractError("dry_run_required", "explore requires --dry-run before execution")
 
 
+def validate_youtube_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ContractError("malformed_url", "--url must be an absolute http(s) URL")
+    host = parsed.hostname or ""
+    if host.lower() not in YOUTUBE_HOSTS:
+        raise ContractError("unsupported_url", "comments currently supports only YouTube video URLs")
+    if not youtube_video_id(parsed):
+        raise ContractError("malformed_url", "--url must identify a YouTube video")
+
+
+def youtube_video_id(parsed):
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.strip("/")
+    if host == "youtu.be":
+        return path.split("/", 1)[0]
+    if path.startswith(("embed/", "shorts/", "live/")):
+        return path.split("/", 1)[1].split("/", 1)[0]
+    if path == "watch":
+        return (parse_qs(parsed.query).get("v") or [None])[0]
+    return None
+
+
+def comment_fetch_limit(limit, offset, query):
+    if limit == 0:
+        return 0
+    if query:
+        return max(500, limit + offset)
+    return max(1, limit + offset)
+
+
+def yt_dlp_executable():
+    executable = shutil.which("yt-dlp")
+    if not executable:
+        raise ContractError("yt_dlp_missing", "yt-dlp executable was not found on PATH")
+    return executable
+
+
+def load_youtube_comments(url, sort, fetch_limit):
+    sort_arg = YOUTUBE_COMMENT_SORT[sort]
+    cmd = [
+        yt_dlp_executable(),
+        "--ignore-config",
+        "--no-cache-dir",
+        "--skip-download",
+        "--dump-single-json",
+        "--write-comments",
+        "--extractor-args",
+        f"youtube:comment_sort={sort_arg};max_comments={fetch_limit}",
+        "--no-playlist",
+        url,
+    ]
+    try:
+        result = subprocess.run(cmd, text=True, capture_output=True, timeout=120)
+    except subprocess.TimeoutExpired as err:
+        raise ContractError("yt_dlp_timeout", "yt-dlp timed out while fetching comments") from err
+
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "yt-dlp failed while fetching comments"
+        raise ContractError("yt_dlp_failed", message.splitlines()[-1])
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as err:
+        raise ContractError("malformed_source_data", "yt-dlp returned malformed JSON") from err
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("comments"), list):
+        raise ContractError("malformed_source_data", "yt-dlp JSON did not contain a comments array")
+    return payload
+
+
+def normalize_int(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_bool(value):
+    return bool(value) if value is not None else False
+
+
+def normalize_comment(raw):
+    if not isinstance(raw, dict):
+        raise ContractError("malformed_source_data", "comment entry was not an object")
+    if not raw.get("id") or raw.get("text") is None:
+        raise ContractError("malformed_source_data", "comment entry was missing required id or text")
+    return {
+        "id": str(raw["id"]),
+        "parent": str(raw.get("parent") or "root"),
+        "author": str(raw.get("author") or ""),
+        "author_id": str(raw.get("author_id") or ""),
+        "text": str(raw["text"]),
+        "timestamp": normalize_int(raw.get("timestamp")),
+        "like_count": normalize_int(raw.get("like_count")),
+        "is_pinned": normalize_bool(raw.get("is_pinned")),
+        "author_is_uploader": normalize_bool(raw.get("author_is_uploader")),
+        "url": raw.get("url"),
+    }
+
+
+def apply_comment_filters(comments, query, offset, limit):
+    normalized = [normalize_comment(comment) for comment in comments]
+    if query:
+        needle = query.casefold()
+        normalized = [comment for comment in normalized if needle in comment["text"].casefold()]
+    return normalized[offset:offset + limit] if limit else []
+
+
+def apply_fields(items, fields_arg):
+    if not fields_arg:
+        return items
+    fields = [field.strip() for field in fields_arg.split(",") if field.strip()]
+    return [{field: item.get(field) for field in fields} for item in items]
+
+
+def run_comments(args, started):
+    if args.provider != "youtube":
+        raise ContractError("unsupported_provider", "comments currently supports only provider=youtube")
+    validate_youtube_url(args.url)
+
+    fetch_limit = comment_fetch_limit(args.limit, args.offset, args.query)
+    raw = {"comments": []} if fetch_limit == 0 else load_youtube_comments(args.url, args.sort, fetch_limit)
+    comments = apply_comment_filters(raw["comments"], args.query, args.offset, args.limit)
+    data = apply_fields(comments, args.fields)
+    meta = {
+        "provider": args.provider,
+        "command": "comments",
+        "url": args.url,
+        "limit": args.limit,
+        "offset": args.offset,
+        "sort": args.sort,
+        "latency_ms": int((time.time() - started) * 1000),
+    }
+    if args.query:
+        meta["query"] = args.query
+    return envelope(True, data, meta)
+
+
 def run_command(command, argv, started):
     parser = build_parser(command)
     args, unknown = parser.parse_known_args(argv)
@@ -335,6 +490,10 @@ def run_command(command, argv, started):
         return 0
 
     validate_args(command, args)
+    if command == "comments":
+        print_json(run_comments(args, started), args.pretty)
+        return 0
+
     meta = {
         "provider": args.provider,
         "command": command,
