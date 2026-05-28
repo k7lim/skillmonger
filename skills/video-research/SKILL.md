@@ -7,6 +7,10 @@ description: Provider-neutral video research facade using sm-video for search, p
 
 Use this skill when you need a provider-neutral video research workflow across YouTube, BiliBili, or future video providers. The agent-facing contract is the local `scripts/sm-video` CLI. It wraps upstream video tooling behind one JSON envelope, hardened inputs, normalized command metadata, and a clear sensor/actuator split.
 
+## Migration Position
+
+Prefer `sm-video` for new cross-platform video research workflows as each command becomes available. Existing `youtube`, `youtube-search`, `youtube-clip`, and direct `yt-dlp` workflows remain compatibility workflows until migration tickets explicitly replace them, so preserve their behavior when using or documenting legacy YouTube-only paths.
+
 ## Command Surface
 
 Run commands from this skill directory or invoke the script by path:
@@ -16,6 +20,12 @@ skills/video-research/scripts/sm-video --describe --pretty
 skills/video-research/scripts/sm-video search --provider youtube --query "topic" --limit 10 --offset 0 --pretty
 skills/video-research/scripts/sm-video probe --provider youtube --url "https://www.youtube.com/watch?v=VIDEO_ID" --fields id,title,uploader,duration
 skills/video-research/scripts/sm-video comments --provider youtube --url "https://www.youtube.com/watch?v=VIDEO_ID" --limit 200 --offset 0
+```
+
+Current YouTube comments support:
+
+```bash
+skills/video-research/scripts/sm-video comments --provider youtube --url "URL" --limit N --offset N --sort top|new --query "term" --fields id,text,author,like_count
 ```
 
 Sensors are read-only and safe to run after normal prerequisite checks:
@@ -31,6 +41,8 @@ Actuators can write files or perform heavier media operations. They must be dry-
 - `download`
 - `clip`
 - `explore`
+
+Before any actuator non-dry-run execution is added or used, get explicit user approval, run the command once with `--dry-run`, present the dry-run plan, and only then run the non-dry-run command if the user approves that specific plan.
 
 ## Contract
 
@@ -64,6 +76,8 @@ skills/video-research/scripts/check-prereqs.sh
 ```
 
 `check-prereqs.sh` follows the Skill Script Interface directly and does not use the `sm-video` envelope. It reports `yt-dlp` as required and `ffmpeg` as optional, with `required_for` capabilities.
+
+For read-only workflows, `ffmpeg` is optional. It is required for clip extraction, audio-only output, media merge/remux, recoding, subtitle embedding, and chapter operations.
 
 ## Guardrails
 
