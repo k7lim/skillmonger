@@ -4,42 +4,38 @@ skill:
   created: 2026-05-26
   updated: 2026-05-27
   author: kevin
-
 triggers:
   phrases:
-    - "ralph orchestrator"
-    - "ralph relay"
-    - "run the ralph relay"
-    - "orchestrate bd ready"
-    - "one-at-a-time ralph"
-    - "one at a time ralph"
+  - ralph orchestrator
+  - ralph relay
+  - run the ralph relay
+  - orchestrate bd ready
+  - one-at-a-time ralph
+  - one at a time ralph
   keywords:
-    - ralph
-    - orchestrator
-    - beads
-    - bd
-    - relay
-
+  - ralph
+  - orchestrator
+  - beads
+  - bd
+  - relay
 dependencies:
-  skills: [handoff]
+  skills:
+  - handoff
   tools:
-    - Agent
-    - Bash
+  - Agent
+  - Bash
   cli:
-    - bd
-    - git
-
+  - bd
+  - git
 loading:
   primary: SKILL.md
   on_failure: MEMO.md
   always_load:
-    - CONFIG.yaml
-
+  - CONFIG.yaml
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 0
-
+  iteration_count: 1
 budget:
   metadata_max: 100
   skill_max: 5000
