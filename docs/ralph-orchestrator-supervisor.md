@@ -58,6 +58,18 @@ The orchestrator should not be restarted after every issue by default. It should
 - Keep BEADS access serialized to avoid embedded Dolt false failures.
 - Produce durable logs: prompts, JSONL agent stream, final message, handoff path, validation result, and session id when discoverable.
 
+## Safety Invariants
+
+These invariants are the parts of the system that must stay true even when a worker fails, an agent times out, `bd` is locked, or the provider returns a partial stream.
+
+- **Yolo flags are path-gated.** Any harness invocation that bypasses sandboxing or approvals must happen only after resolving the workspace with `pwd -P` and proving it is under `~/Development/sandbox/...`.
+- **The shell never accepts work on content alone.** The supervisor may classify process outcomes, check files, check `bd`, and run validators. It must not decide that code is correct without the orchestrator's QA result.
+- **The orchestrator never self-resumes through chat compaction.** A hop either finishes the relay, writes the expected handoff, or fails the hop contract.
+- **One implementation worker is active at a time.** The orchestrator owns this rule, and the supervisor validates it where the transcript or stream exposes enough evidence.
+- **BEADS calls are serialized when shell-owned.** Supervisor preflight, classification, and validation use a single `bd_cmd` wrapper with retry behavior for embedded Dolt locks.
+- **Dirty state must be explained.** A non-clean workspace is allowed only when the handoff names the state, the reason, and the exact next landing or cleanup command.
+- **Stop states are explicit.** The supervisor ends in one of: `complete`, `handoff`, `rate_limited`, `fatal_infra`, `bad_handoff`, `agent_failure`, or `manual_intervention`.
+
 ## Non-Goals
 
 - Do not replace `ralph-orchestrator` with a pure bash implementation.
@@ -110,6 +122,18 @@ Minimum:
 --dry-run
 ```
 
+Recommended additional options before production use:
+
+```bash
+--no-yolo
+--max-rate-limit-retries N
+--rate-limit-base-sleep SECONDS
+--bd-lock-timeout SECONDS
+--require-clean-start
+--stop-after-hop
+--keep-going-on-validation-warning
+```
+
 Defaults:
 
 ```text
@@ -117,9 +141,26 @@ harness: codex
 mode: no-budget
 token-budget: 60000 when mode=budget
 max-hops: 8
+max-rate-limit-retries: 3
+bd-lock-timeout: 120
 handoff-dir: /private/tmp
 run-id: timestamp
 validate-cmd: none unless experiment provides one
+require-clean-start: true
+```
+
+Exit codes:
+
+```text
+0  relay complete or handoff ready for next hop
+2  usage or invalid options
+10 sandbox/yolo safety refusal
+11 preflight failure
+12 validation failure
+13 bad or missing handoff while work remains
+14 harness process failure
+15 rate limit retry budget exhausted
+16 manual intervention required
 ```
 
 ## Sandbox Enforcement
@@ -157,6 +198,10 @@ Shell-owned:
 - process exit handling
 - max hop limits
 - serialized `bd` helper for supervisor checks
+- run directory creation
+- prompt and environment snapshots
+- validator invocation
+- recovery command printing
 
 Orchestrator-owned:
 
@@ -167,6 +212,13 @@ Orchestrator-owned:
 - QA
 - close/commit/push workflow according to repo instructions
 - deciding when handoff is due
+
+Shared contract:
+
+- The shell tells the orchestrator the expected handoff path and hop number.
+- The orchestrator writes only that handoff path unless it has a concrete reason to stop without one.
+- The shell checks whether the expected path exists and whether it contains the minimum continuation fields.
+- If the shell and orchestrator disagree, the shell stops and preserves logs instead of guessing.
 
 ## Handoff Contract
 
@@ -200,6 +252,50 @@ The handoff file must include:
 - likely relevant files
 - whether built-in compaction was avoided
 
+Minimum handoff shape:
+
+~~~markdown
+# Ralph Orchestrator Handoff
+
+Workspace: <absolute path>
+Run id: <run-id>
+Hop: <n>
+Previous hop status: <handoff|manual_intervention|rate_limited|fatal_infra>
+Built-in compaction avoided: <yes|no|unknown>
+
+## BEADS State
+- Current issue: <id and title, or none>
+- Next issue: <id and title, or unknown>
+- Ready issues remaining: <count or command to check>
+- In-progress issues: <ids or none>
+
+## Ledger
+- <compact issue-cycle summary>
+
+## QA
+- Result: <passed|failed|not-run|blocked>
+- Evidence: <commands or inspection>
+- Gaps: <remaining uncertainty>
+
+## Repository State
+- Branch: <branch>
+- Git status: <clean or exact dirty summary>
+- Staged files: <files or none>
+- Uncommitted files: <files or none>
+
+## Next Step
+Run:
+
+```bash
+<exact next command>
+```
+
+Relevant files:
+- <path>
+~~~
+
+The validator can start with vocabulary checks, but production should parse these headings rather than rely on broad grep patterns.
+
 The supervisor should treat missing handoff as one of three outcomes:
 
 - success if `bd ready` is empty and final response says relay complete
@@ -223,6 +319,9 @@ preflight
 - Verify `bd ready` works.
 - Verify git repo state is understandable.
 - Verify `ralph-orchestrator` and `handoff` skills are deployed in the target environment.
+- Verify the run directory does not already exist, unless `--resume-run` is added later.
+- Verify the expected handoff path for hop 1 is clear, or record that a deliberate resume is in progress.
+- Verify `--validate-cmd`, if supplied, is executable from the supervisor environment.
 - Create run log directory:
   ```text
   .ralph-orchestrator-runs/<run-id>/
@@ -262,6 +361,16 @@ Classifications:
 - `fatal_infra`: sandbox/tool rejection, broken `bd`, invalid workspace
 - `bad_handoff`: handoff missing or unusable while work remains
 - `agent_failure`: agent stopped without satisfying contract
+- `manual_intervention`: coherent state exists, but a human decision is required before another hop
+
+Classification order matters:
+
+1. If the harness failed before an agent session started, classify as `fatal_infra`.
+2. If rate-limit text is present and retry budget remains, classify as `rate_limited`.
+3. If `bd ready` is empty and final output says the relay is complete, classify as `complete`.
+4. If the expected handoff exists, validate it and classify as `handoff` or `manual_intervention`.
+5. If ready work remains and no handoff exists, classify as `bad_handoff`.
+6. Otherwise classify as `agent_failure`.
 
 ### Validate Hop
 
@@ -278,6 +387,26 @@ For production, a minimal validator should check:
 - if workspace is dirty, handoff captures the dirty/staged state
 - transcript/log does not contain compacted-state continuation markers
 - no multiple-worker concurrency happened if detectable
+- final output does not instruct the next hop to continue from chat history
+- run log contains prompt, stream, stdout, stderr, final output, and validator result
+
+Validation levels:
+
+```text
+preflight  checks the workspace can be safely launched
+hop        checks one completed hop and its handoff or completion state
+run        checks the aggregate run directory after multiple hops
+```
+
+Suggested validator interface:
+
+```bash
+validate-supervisor-run.sh --level preflight <run-dir>
+validate-supervisor-run.sh --level hop --hop 001 <run-dir>
+validate-supervisor-run.sh --level run <run-dir>
+```
+
+The script should print human-readable `PASS`/`FAIL` lines and exit non-zero on any required failure. Optional checks should print `WARN` and should not be hidden; the supervisor can decide whether warnings stop the run.
 
 ### Continue
 
@@ -288,6 +417,45 @@ If classification is `handoff` and validation passes:
 - launch a new top-level orchestrator session
 
 The supervisor, not the old orchestrator session, performs the actual process-level handoff.
+
+## Implementation Sketch
+
+The first production-quality shell script can stay intentionally boring:
+
+```text
+main
+  parse_args
+  resolve_workspace
+  preflight
+  while hop <= max_hops:
+    make_hop_dir
+    write_prompt
+    run_harness_capture_stream
+    classify_result
+    run_validator
+    case classification:
+      complete: print_summary; exit 0
+      handoff: hop++; continue
+      rate_limited: sleep_and_retry_same_hop
+      manual_intervention: print_recovery; exit 16
+      *: print_failure_context; exit mapped_code
+  stop max_hops exceeded
+```
+
+Keep helpers small and testable:
+
+```text
+resolve_workspace
+assert_sandbox_for_yolo
+bd_cmd
+write_prompt
+run_codex_harness
+classify_result
+validate_handoff_minimum
+print_recovery_command
+```
+
+Avoid global mutable state except for `RUN_DIR`, `WORKSPACE`, `RUN_ID`, and `HOP`. Every helper should take explicit paths where practical so shell unit tests can exercise it with fixture directories.
 
 ## Relationship To Old `rbl`
 
@@ -348,6 +516,77 @@ If an issue is closed but files are staged/uncommitted without explanation, stop
 
 If an issue is open with QA-passed work and a handoff names the exact close command, accept as coherent handoff.
 
+## Testing And Validation Plan
+
+Yes, this can be built safely if the first implementation is test-first around the supervisor boundaries and only later allowed to use yolo harness flags.
+
+### Test Layers
+
+1. **Static checks**
+   - `bash -n experiments/ralph-context-handoff/scripts/run-supervisor.sh`
+   - `shellcheck experiments/ralph-context-handoff/scripts/run-supervisor.sh` when available
+   - `scripts/validate-skill.sh skills/ralph-orchestrator`
+
+2. **Pure shell unit tests**
+   - `assert_sandbox_for_yolo` accepts only resolved sandbox paths.
+   - option parsing rejects invalid harnesses and negative limits.
+   - prompt generation includes run id, hop number, expected handoff path, and prior handoff path.
+   - classification handles `complete`, `handoff`, `bad_handoff`, rate-limit text, and harness failure.
+   - handoff validation rejects missing headings and dirty workspace without repository-state notes.
+
+3. **Dry-run integration tests**
+   - `--dry-run` creates run directories and prompts without launching an agent.
+   - dry run refuses yolo outside sandbox.
+   - dry run works in `--no-yolo` mode outside sandbox for documentation and prompt inspection.
+
+4. **Fake harness tests**
+   - Harness writes canned JSONL/stdout/final files and exits with configured status.
+   - Scenario fixtures cover complete relay, valid handoff, missing handoff, rate limit, and malformed handoff.
+   - No network or provider account is needed.
+
+5. **Disposable BEADS integration**
+   - Use `experiments/ralph-context-handoff/scripts/setup-experiment.sh`.
+   - Run the supervisor against the generated workspace in `--no-yolo` or sandboxed yolo mode.
+   - Validate with `validate-observation.sh` first, then the supervisor validator.
+
+6. **Canary unattended run**
+   - Run with `--max-hops 2`, `--max-issues-total` low, and a disposable sandbox repo.
+   - Require clean start.
+   - Stop on validation warnings.
+   - Inspect run logs before increasing limits.
+
+### Minimum Acceptance Tests For First Script
+
+- Outside `~/Development/sandbox`, yolo mode exits `10` before creating or modifying anything.
+- `--dry-run --no-yolo` writes prompts and run metadata but does not invoke an agent.
+- A fake complete harness exits `0` only when `bd ready` is empty or the fake fixture says completion is valid.
+- A fake handoff harness exits `0` and launches the next hop only after validation passes.
+- A fake missing-handoff harness exits `13` when ready issues remain.
+- A dirty workspace with no repository-state handoff section exits `12` or `13`.
+- Rate-limit retry budget is honored and logged.
+- Interrupting the supervisor leaves the run directory intact and prints the recovery path.
+
+### Commands For The First Safe Pass
+
+From this repo:
+
+```bash
+experiments/ralph-context-handoff/scripts/setup-experiment.sh
+experiments/ralph-context-handoff/scripts/validate-observation.sh experiments/ralph-context-handoff/runs/<run-id> --preflight
+bash -n experiments/ralph-context-handoff/scripts/run-supervisor.sh
+experiments/ralph-context-handoff/scripts/run-supervisor.sh --dry-run --no-yolo experiments/ralph-context-handoff/runs/<run-id>/workspace
+experiments/ralph-context-handoff/scripts/validate-supervisor-run.sh --level preflight experiments/ralph-context-handoff/runs/<run-id>/workspace/.ralph-orchestrator-runs/<supervisor-run-id>
+```
+
+After the fake harness passes:
+
+```bash
+experiments/ralph-context-handoff/scripts/run-supervisor.sh --harness fake --scenario valid-handoff --max-hops 2 experiments/ralph-context-handoff/runs/<run-id>/workspace
+experiments/ralph-context-handoff/scripts/validate-supervisor-run.sh --level run experiments/ralph-context-handoff/runs/<run-id>/workspace/.ralph-orchestrator-runs/<supervisor-run-id>
+```
+
+Only after those pass should Codex yolo mode be tested, and only from a workspace under `~/Development/sandbox/...`.
+
 ## Observability
 
 Each run should write:
@@ -379,25 +618,29 @@ hop 3: complete, bd ready empty
 ## Rollout Plan
 
 1. Extend the existing experiment with `run-supervisor.sh`.
-2. Prove it on `ralph-context-handoff` with:
+2. Add a fake harness and validator fixtures.
+3. Prove dry-run and fake-harness behavior outside the sandbox without yolo flags.
+4. Prove it on `ralph-context-handoff` with:
    - no-budget fallback cap
    - explicit budget
    - at least two orchestrator hops
-3. Add a sandbox-only wrapper in `~/Development/sandbox/ralph-orchestrator-loop.sh`.
-4. Add `rol`/`col` aliases in `.zshrc`.
-5. Run against a disposable real-ish sandbox repo.
-6. Promote patterns back into skillmonger source if stable.
+5. Add a sandbox-only wrapper in `~/Development/sandbox/ralph-orchestrator-loop.sh`.
+6. Add `rol`/`col` aliases in `.zshrc`.
+7. Run against a disposable real-ish sandbox repo.
+8. Promote patterns back into skillmonger source if stable.
 
 ## Acceptance Criteria
 
 - Supervisor refuses yolo mode outside `~/Development/sandbox/...`.
 - Supervisor can launch Codex orchestrator hops non-interactively.
+- Supervisor dry-run and fake-harness tests pass without provider access.
 - A hop can process multiple issues before handoff.
 - Handoff launches a fresh top-level orchestrator session, not a subagent.
 - Built-in chat compaction is never used as continuation.
 - BEADS commands run through serialized access when shell-owned.
 - Logs are sufficient to validate each hop after the fact.
 - The existing experiment can complete across at least two hops.
+- Failure modes produce distinct exit codes and recovery instructions.
 
 ## Open Questions
 
@@ -406,3 +649,4 @@ hop 3: complete, bd ready empty
 - Should orchestrator hops use explicit token goals where available, or rely on fallback caps in non-interactive `codex exec`?
 - How should the supervisor discover the Codex session id reliably for `pj` validation?
 - Should dirty-but-documented handoffs be accepted in production, or only in experiments?
+- Should fake harness fixtures live under `experiments/ralph-context-handoff/fixtures/` or beside the eventual supervisor tests?
