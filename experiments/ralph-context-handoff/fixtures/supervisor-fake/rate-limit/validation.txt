@@ -1,0 +1,1 @@
+WARN fake rate limit scenario stops before handoff validation

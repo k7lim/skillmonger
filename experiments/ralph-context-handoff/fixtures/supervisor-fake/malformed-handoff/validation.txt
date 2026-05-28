@@ -1,0 +1,1 @@
+FAIL fake malformed handoff is missing required headings

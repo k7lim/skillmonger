@@ -2,13 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXPERIMENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+FAKE_FIXTURE_DIR="$EXPERIMENT_DIR/fixtures/supervisor-fake"
 
 usage() {
   cat >&2 <<EOF_USAGE
 usage: $0 [options] <workspace>
 
 Options:
-  --harness codex|claude|kimi
+  --harness codex|claude|kimi|fake
+  --scenario complete|valid-handoff|missing-handoff|malformed-handoff|rate-limit|harness-failure
   --mode budget|no-budget
   --token-budget N
   --max-hops N
@@ -77,6 +80,7 @@ EXPERIMENT_RUN_ID=$EXPERIMENT_RUN_ID
 WORKSPACE=$WORKSPACE
 RUN_DIR=$RUN_DIR
 HARNESS=$HARNESS
+SCENARIO=$SCENARIO
 MODE=$MODE
 TOKEN_BUDGET=$TOKEN_BUDGET
 MAX_HOPS=$MAX_HOPS
@@ -112,7 +116,80 @@ Use one worker subagent at a time. Process multiple BEADS issues until the conte
 EOF_PROMPT
 }
 
+render_fake_template() {
+  local src="$1"
+  local dest="$2"
+  local scenario="$3"
+  local status="$4"
+
+  sed \
+    -e "s|{{WORKSPACE}}|$WORKSPACE|g" \
+    -e "s|{{RUN_ID}}|$RUN_ID|g" \
+    -e "s|{{EXPERIMENT_RUN_ID}}|$EXPERIMENT_RUN_ID|g" \
+    -e "s|{{HOP}}|1|g" \
+    -e "s|{{SCENARIO}}|$scenario|g" \
+    -e "s|{{STATUS}}|$status|g" \
+    -e "s|{{EXPECTED_HANDOFF}}|$EXPECTED_HANDOFF|g" \
+    "$src" > "$dest"
+}
+
+require_fake_fixture_file() {
+  local path="$1"
+
+  if [[ ! -f "$path" ]]; then
+    echo "fake fixture file is missing: $path" >&2
+    exit 11
+  fi
+}
+
+run_fake_harness() {
+  local scenario="$1"
+  local fixture_dir="$FAKE_FIXTURE_DIR/$scenario"
+  local status_file="$fixture_dir/status"
+  local status
+  local name
+
+  [[ -d "$fixture_dir" ]] || die_usage "unknown --scenario: $scenario"
+  require_fake_fixture_file "$status_file"
+  status="$(<"$status_file")"
+
+  for name in stream.jsonl stdout.txt stderr.txt final.md validation.txt; do
+    require_fake_fixture_file "$fixture_dir/$name"
+    render_fake_template "$fixture_dir/$name" "$HOP_DIR/$name" "$scenario" "$status"
+  done
+
+  if [[ -f "$fixture_dir/handoff.md" ]]; then
+    render_fake_template "$fixture_dir/handoff.md" "$HOP_DIR/handoff.md" "$scenario" "$status"
+  fi
+
+  {
+    printf 'fake_scenario=%s\n' "$scenario"
+    printf 'fake_status=%s\n' "$status"
+  } >> "$RUN_DIR/supervisor.log"
+
+  printf 'hop 1: %s, fake scenario %s\n' "$status" "$scenario"
+
+  case "$scenario" in
+    complete|valid-handoff)
+      exit 0
+      ;;
+    missing-handoff|malformed-handoff)
+      exit 13
+      ;;
+    rate-limit)
+      exit 15
+      ;;
+    harness-failure)
+      exit 14
+      ;;
+    *)
+      die_usage "unknown --scenario: $scenario"
+      ;;
+  esac
+}
+
 HARNESS="codex"
+SCENARIO="complete"
 MODE="no-budget"
 TOKEN_BUDGET="60000"
 MAX_HOPS="8"
@@ -133,6 +210,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --harness=*)
       HARNESS="${1#*=}"
+      shift
+      ;;
+    --scenario)
+      [[ $# -ge 2 ]] || die_usage "--scenario requires a value"
+      SCENARIO="$2"
+      shift 2
+      ;;
+    --scenario=*)
+      SCENARIO="${1#*=}"
       shift
       ;;
     --mode)
@@ -226,8 +312,13 @@ done
 [[ -n "$WORKSPACE_ARG" ]] || die_usage "workspace is required"
 
 case "$HARNESS" in
-  codex|claude|kimi) ;;
+  codex|claude|kimi|fake) ;;
   *) die_usage "invalid --harness: $HARNESS" ;;
+esac
+
+case "$SCENARIO" in
+  complete|valid-handoff|missing-handoff|malformed-handoff|rate-limit|harness-failure) ;;
+  *) die_usage "unknown --scenario: $SCENARIO" ;;
 esac
 
 case "$MODE" in
@@ -267,6 +358,7 @@ write_run_env "$RUN_DIR/run.env"
   printf 'experiment_run_id=%s\n' "$EXPERIMENT_RUN_ID"
   printf 'workspace=%s\n' "$WORKSPACE"
   printf 'harness=%s\n' "$HARNESS"
+  printf 'scenario=%s\n' "$SCENARIO"
   printf 'mode=%s\n' "$MODE"
   printf 'dry_run=%s\n' "$DRY_RUN"
   printf 'no_yolo=%s\n' "$NO_YOLO"
@@ -278,6 +370,10 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "dry-run: wrote $RUN_DIR"
   echo "dry-run: wrote $HOP_DIR/prompt.md"
   exit 0
+fi
+
+if [[ "$HARNESS" == "fake" ]]; then
+  run_fake_harness "$SCENARIO"
 fi
 
 echo "harness execution is not implemented in this dry-run supervisor skeleton" >&2

@@ -1,0 +1,3 @@
+fake supervisor scenario: {{SCENARIO}}
+status: {{STATUS}}
+handoff written: hop-001/handoff.md

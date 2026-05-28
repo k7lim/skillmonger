@@ -1,0 +1,2 @@
+PASS fake valid handoff artifacts rendered
+PASS handoff contains minimum headings
