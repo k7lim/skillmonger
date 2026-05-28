@@ -58,3 +58,4 @@ The validator stores any fetched transcript under `workspace/observations/`.
 - No issue is claimed after the handoff trigger.
 - The transcript does not contain a built-in compaction resume message such as `Continuing ... compacted state`.
 - The workspace git status is coherent.
+- If the workspace is not clean, the handoff explicitly captures the staged/uncommitted state and the next landing command.

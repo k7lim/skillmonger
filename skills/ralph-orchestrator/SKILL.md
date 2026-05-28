@@ -49,6 +49,20 @@ Stop and invoke the `handoff` skill before taking more work when any of these ar
 
 When the guardrail triggers, finish only the minimum needed to leave the repository coherent for the current issue. Do not claim the next `bd ready` issue, do not spawn another subagent, and do not wait for built-in compaction.
 
+## Coherent Stop State
+
+Before closing an issue, check the context budget guardrail. If handoff is already due and the issue is not closed yet, do not close it; write the handoff with QA status and the exact next close/commit command.
+
+Once you have closed an issue, exported issue metadata, staged files, or otherwise started the repository landing sequence, treat that sequence as atomic. Do not stop solely because of token budget until one of these is true:
+
+- the issue result is committed locally, or pushed when the repository workflow requires pushing
+- the repository has no staged or partially landed issue changes
+- a concrete blocker prevents landing after retrying the failed command with appropriate approval/escalation
+
+If a git index operation fails because of sandbox permissions or `.git/index.lock`, request approval/escalation and retry the same narrow command before handing off. Capture any remaining blocker in the handoff.
+
+Run BEADS commands serially. Embedded Dolt allows only one active process against the local database, so parallel `bd` commands can create false lock failures.
+
 For handoff, include:
 
 - current bd issue

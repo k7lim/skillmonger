@@ -54,6 +54,7 @@ if [[ -d "$WORKSPACE" ]]; then
   else
     check_fail "git status unavailable"
   fi
+  status_changes="$(printf '%s\n' "$status_output" | sed '1d')"
 
   if [[ -f "$WORKSPACE/results.log" ]]; then
     completed_count="$(grep -Ec '^issue-[0-9][0-9] complete$' "$WORKSPACE/results.log" || true)"
@@ -76,6 +77,15 @@ else
       check_pass "handoff contains expected continuation vocabulary"
     else
       check_fail "handoff exists but lacks expected continuation vocabulary"
+    fi
+    if [[ -n "${status_changes:-}" ]]; then
+      if grep -Eiq 'staged|uncommitted|commit failed|open gaps|Repository State|git status' "$HANDOFF_PATH"; then
+        check_pass "handoff captures non-clean workspace state"
+      else
+        check_fail "workspace is not clean, and handoff does not capture that state"
+      fi
+    else
+      check_pass "workspace is clean after run"
     fi
   else
     check_fail "handoff missing at $HANDOFF_PATH"
