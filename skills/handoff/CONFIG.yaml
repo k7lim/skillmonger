@@ -4,33 +4,28 @@ skill:
   created: 2026-05-26
   updated: 2026-05-26
   author: kevin
-
 triggers:
   phrases:
-    - "handoff"
-    - "write a handoff"
-    - "summarize for next session"
-    - "compact this conversation"
+  - handoff
+  - write a handoff
+  - summarize for next session
+  - compact this conversation
   keywords:
-    - handoff
-    - compact
-    - summary
-
+  - handoff
+  - compact
+  - summary
 dependencies:
   tools:
-    - filesystem
-
+  - filesystem
 loading:
   primary: SKILL.md
   on_failure: MEMO.md
   always_load:
-    - CONFIG.yaml
-
+  - CONFIG.yaml
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 0
-
+  iteration_count: 1
 budget:
   metadata_max: 100
   skill_max: 5000
