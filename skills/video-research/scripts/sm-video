@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+"""Agent-facing video research facade contract."""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import time
+from pathlib import Path
+from urllib.parse import unquote
+
+
+SCHEMA_VERSION = 1
+CONTRACT_VERSION = "0.1.0"
+SOURCE = "yt-dlp"
+PROVIDERS = ("youtube", "bilibili")
+SENSORS = ("search", "probe", "transcript", "comments", "sites")
+ACTUATORS = ("download", "clip", "explore")
+COMMANDS = SENSORS + ACTUATORS
+
+COMMON_FIELDS = {
+    "id",
+    "provider",
+    "url",
+    "title",
+    "uploader",
+    "uploader_id",
+    "duration",
+    "view_count",
+    "like_count",
+    "comment_count",
+    "upload_date",
+    "thumbnail",
+    "has_subtitles",
+}
+FIELDS = {
+    "search": COMMON_FIELDS,
+    "probe": COMMON_FIELDS | {"description", "tags", "categories", "chapters", "captions"},
+    "transcript": {"source_type", "start", "end", "text", "language"},
+    "comments": {
+        "id",
+        "parent",
+        "author",
+        "author_id",
+        "text",
+        "timestamp",
+        "like_count",
+        "is_pinned",
+        "author_is_uploader",
+        "url",
+    },
+    "sites": {"provider", "name", "supported", "capabilities"},
+}
+ACTUATOR_MODES = {
+    "download": ("video", "audio", "metadata", "subtitles"),
+}
+CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+PERCENT_ENCODED_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+
+
+class ContractError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class EnvelopeParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise ContractError("invalid_argument", message)
+
+
+def envelope(success, data, meta):
+    base = {
+        "source": SOURCE,
+        "latency_ms": meta.pop("latency_ms", 0),
+        "schema_version": SCHEMA_VERSION,
+    }
+    base.update(meta)
+    return {"success": success, "data": data, "meta": base}
+
+
+def error_envelope(code, message, started, **meta):
+    meta["latency_ms"] = int((time.time() - started) * 1000)
+    meta["error"] = {"code": code, "message": message}
+    return envelope(False, [], meta)
+
+
+def print_json(payload, pretty=False):
+    print(json.dumps(payload, indent=2 if pretty else None, sort_keys=bool(pretty)))
+
+
+def field_specs(command):
+    return [
+        {"name": name, "type": "mixed", "description": f"{command} output field: {name}."}
+        for name in sorted(FIELDS.get(command, ()))
+    ]
+
+
+def option(name, kind, required=False, default=None, choices=None, description=""):
+    spec = {
+        "name": name,
+        "type": kind,
+        "required": required,
+        "default": default,
+        "description": description,
+    }
+    if choices:
+        spec["choices"] = list(choices)
+    return spec
+
+
+def command_schema(name):
+    side_effecting = name in ACTUATORS
+    base_options = [
+        option("provider", "choice", default="youtube", choices=PROVIDERS, description="Video provider boundary enum."),
+        option("limit", "int", default=10, description="Maximum records to return where the command is list-like."),
+        option("offset", "int", default=0, description="Records to skip where the command is list-like."),
+        option("fields", "string", default=None, description="Comma-separated output fields. Unknown fields fail validation."),
+        option("pretty", "bool", default=False, description="Pretty-print JSON output."),
+        option("describe", "bool", default=False, description="Emit command metadata and exit."),
+    ]
+    specific = {
+        "search": [option("query", "string", True, description="Provider search query.")],
+        "probe": [option("url", "string", True, description="Video URL to inspect.")],
+        "transcript": [
+            option("url", "string", True, description="Video URL to inspect."),
+            option("lang", "string", default="en", description="Preferred transcript language."),
+            option("prefer", "choice", default="manual", choices=("manual", "auto"), description="Caption preference."),
+        ],
+        "comments": [
+            option("url", "string", True, description="Video URL to inspect."),
+            option("sort", "choice", default="top", choices=("top", "new"), description="Comment sort order."),
+            option("query", "string", default=None, description="Optional text filter for comments."),
+        ],
+        "sites": [option("query", "string", default=None, description="Optional provider/site search string.")],
+        "download": [
+            option("url", "string", True, description="Video URL to download from."),
+            option("mode", "choice", default="video", choices=ACTUATOR_MODES["download"], description="Download mode."),
+            option("output_dir", "path", default="./downloads", description="CWD-sandboxed output directory."),
+            option("dry_run", "bool", default=False, description="Required before future execution."),
+        ],
+        "clip": [
+            option("url", "string", True, description="Video URL to clip from."),
+            option("start", "timestamp", True, description="Clip start time."),
+            option("end", "timestamp", True, description="Clip end time."),
+            option("output_dir", "path", default="./clips", description="CWD-sandboxed output directory."),
+            option("dry_run", "bool", default=False, description="Required before future execution."),
+        ],
+        "explore": [
+            option("url", "string", True, description="Video URL for the explorer."),
+            option("output", "path", default="./explore.html", description="CWD-sandboxed output HTML file."),
+            option("dry_run", "bool", default=False, description="Required before future execution."),
+        ],
+    }
+    return {
+        "name": name,
+        "version": CONTRACT_VERSION,
+        "kind": "actuator" if side_effecting else "sensor",
+        "side_effecting": side_effecting,
+        "requires_dry_run_before_execution": side_effecting,
+        "provider_backends": list(PROVIDERS),
+        "options": base_options + specific[name],
+        "output_fields": field_specs(name),
+    }
+
+
+def describe_payload(command=None):
+    if command:
+        return command_schema(command)
+    return {
+        "name": "sm-video",
+        "version": CONTRACT_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "source": SOURCE,
+        "providers": list(PROVIDERS),
+        "sensors": [command_schema(name) for name in SENSORS],
+        "actuators": [command_schema(name) for name in ACTUATORS],
+        "envelope": {"success": "bool", "data": "array|object", "meta": "object"},
+    }
+
+
+def add_common(parser):
+    parser.add_argument("--provider", default="youtube")
+    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--offset", type=int, default=0)
+    parser.add_argument("--fields")
+    parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--describe", action="store_true")
+
+
+def build_parser(command):
+    parser = EnvelopeParser(prog=f"sm-video {command}", add_help=True)
+    add_common(parser)
+    if command == "search":
+        parser.add_argument("--query")
+    elif command == "probe":
+        parser.add_argument("--url")
+    elif command == "transcript":
+        parser.add_argument("--url")
+        parser.add_argument("--lang", default="en")
+        parser.add_argument("--prefer", default="manual")
+    elif command == "comments":
+        parser.add_argument("--url")
+        parser.add_argument("--sort", default="top")
+        parser.add_argument("--query")
+    elif command == "sites":
+        parser.add_argument("--query")
+    elif command == "download":
+        parser.add_argument("--url")
+        parser.add_argument("--mode", default="video")
+        parser.add_argument("--output-dir", default="./downloads")
+        parser.add_argument("--dry-run", action="store_true")
+    elif command == "clip":
+        parser.add_argument("--url")
+        parser.add_argument("--start")
+        parser.add_argument("--end")
+        parser.add_argument("--output-dir", default="./clips")
+        parser.add_argument("--dry-run", action="store_true")
+    elif command == "explore":
+        parser.add_argument("--url")
+        parser.add_argument("--output", default="./explore.html")
+        parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def validate_string(value, label, *, identifier=False, resource_name=False):
+    if value is None:
+        return
+    if CONTROL_RE.search(value):
+        raise ContractError("invalid_input", f"{label} contains control characters")
+    if identifier and ("?" in value or "#" in value):
+        raise ContractError("invalid_identifier", f"{label} must not contain ? or #")
+    if resource_name and PERCENT_ENCODED_RE.search(value):
+        raise ContractError("invalid_identifier", f"{label} must not be percent-encoded")
+    decoded = unquote(value)
+    if decoded != value and any(part in decoded for part in ("..", "/", "\\")):
+        raise ContractError("invalid_identifier", f"{label} contains an unsafe percent-encoded resource")
+
+
+def validate_required(args, names):
+    for name in names:
+        if not getattr(args, name, None):
+            raise ContractError("missing_argument", f"--{name.replace('_', '-')} is required")
+
+
+def validate_provider(provider):
+    validate_string(provider, "provider", identifier=True, resource_name=True)
+    if provider not in PROVIDERS:
+        raise ContractError("invalid_provider", f"provider must be one of: {', '.join(PROVIDERS)}")
+
+
+def validate_limit_offset(limit, offset):
+    if limit < 0:
+        raise ContractError("invalid_limit", "--limit must be zero or greater")
+    if limit > 500:
+        raise ContractError("invalid_limit", "--limit must be at most 500")
+    if offset < 0:
+        raise ContractError("invalid_offset", "--offset must be zero or greater")
+
+
+def validate_fields(command, fields_arg):
+    if not fields_arg:
+        return
+    validate_string(fields_arg, "fields")
+    allowed = FIELDS.get(command, set())
+    requested = [field.strip() for field in fields_arg.split(",") if field.strip()]
+    for field in requested:
+        validate_string(field, "field", identifier=True, resource_name=True)
+        if field not in allowed:
+            raise ContractError("invalid_field", f"unknown field for {command}: {field}")
+
+
+def validate_path(value, label):
+    validate_string(value, label)
+    raw = Path(value)
+    if raw.is_absolute():
+        raise ContractError("invalid_output_path", f"{label} must be relative to the current working directory")
+    if any(part in ("..", "") for part in raw.parts):
+        raise ContractError("invalid_output_path", f"{label} must not contain traversal segments")
+    cwd = Path.cwd().resolve()
+    resolved = (cwd / raw).resolve()
+    if cwd != resolved and cwd not in resolved.parents:
+        raise ContractError("invalid_output_path", f"{label} must stay inside the current working directory")
+
+
+def validate_args(command, args):
+    validate_provider(args.provider)
+    validate_limit_offset(args.limit, args.offset)
+    validate_fields(command, args.fields)
+
+    for attr in ("query", "url", "lang", "prefer", "sort", "mode", "start", "end"):
+        if hasattr(args, attr):
+            validate_string(getattr(args, attr), attr)
+
+    if command == "search":
+        validate_required(args, ("query",))
+    elif command == "probe":
+        validate_required(args, ("url",))
+    elif command == "transcript":
+        validate_required(args, ("url",))
+        if args.prefer not in ("manual", "auto"):
+            raise ContractError("invalid_argument", "--prefer must be manual or auto")
+    elif command == "comments":
+        validate_required(args, ("url",))
+        if args.sort not in ("top", "new"):
+            raise ContractError("invalid_argument", "--sort must be top or new")
+    elif command == "download":
+        validate_required(args, ("url",))
+        if args.mode not in ACTUATOR_MODES["download"]:
+            raise ContractError("invalid_argument", "--mode must be video, audio, metadata, or subtitles")
+        validate_path(args.output_dir, "output-dir")
+        if not args.dry_run:
+            raise ContractError("dry_run_required", "download requires --dry-run before execution")
+    elif command == "clip":
+        validate_required(args, ("url", "start", "end"))
+        validate_path(args.output_dir, "output-dir")
+        if not args.dry_run:
+            raise ContractError("dry_run_required", "clip requires --dry-run before execution")
+    elif command == "explore":
+        validate_required(args, ("url",))
+        validate_path(args.output, "output")
+        if not args.dry_run:
+            raise ContractError("dry_run_required", "explore requires --dry-run before execution")
+
+
+def run_command(command, argv, started):
+    parser = build_parser(command)
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        raise ContractError("invalid_argument", f"unknown arguments: {' '.join(unknown)}")
+    if args.describe:
+        print_json(describe_payload(command), args.pretty)
+        return 0
+
+    validate_args(command, args)
+    meta = {
+        "provider": args.provider,
+        "command": command,
+        "limit": args.limit,
+        "offset": args.offset,
+        "latency_ms": int((time.time() - started) * 1000),
+        "error": {
+            "code": "not_implemented",
+            "message": f"{command} is validated but not implemented yet",
+        },
+    }
+    if getattr(args, "query", None):
+        meta["query"] = args.query
+    if getattr(args, "url", None):
+        meta["url"] = args.url
+    print_json(envelope(False, [], meta), args.pretty)
+    return 1
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    started = time.time()
+    pretty = "--pretty" in argv
+
+    if not argv or argv[0] in ("-h", "--help"):
+        print_json(error_envelope("missing_command", f"command must be one of: {', '.join(COMMANDS)}", started), pretty)
+        return 2
+
+    if argv[0] == "--describe":
+        print_json(describe_payload(), pretty)
+        return 0
+
+    command = argv.pop(0)
+    if command not in COMMANDS:
+        print_json(error_envelope("invalid_command", f"command must be one of: {', '.join(COMMANDS)}", started), pretty)
+        return 2
+
+    try:
+        return run_command(command, argv, started)
+    except ContractError as err:
+        provider = "youtube"
+        if "--provider" in argv:
+            index = argv.index("--provider")
+            if index + 1 < len(argv):
+                provider = argv[index + 1]
+        print_json(error_envelope(err.code, err.message, started, provider=provider, command=command), pretty)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

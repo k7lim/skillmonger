@@ -1,0 +1,40 @@
+skill:
+  name: video-research
+  version: 0.1.0
+  created: 2026-05-27
+  updated: 2026-05-27
+  author: kevin
+
+triggers:
+  phrases:
+    - "video research"
+    - "search video providers"
+    - "find video comments"
+    - "probe video metadata"
+    - "download video dry run"
+    - "clip video dry run"
+  keywords:
+    - sm-video
+    - video research
+    - youtube comments
+    - bilibili video
+    - yt-dlp facade
+
+dependencies:
+  tools:
+    - Bash
+  cli:
+    - yt-dlp
+  optional_cli:
+    - ffmpeg
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
