@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "fixture_set": "yt-dlp raw characterization for sm-video",
+  "collection_date": "2026-05-28",
+  "yt_dlp_version": "2026.03.17",
+  "sanitization": [
+    "Removed media format arrays and signed media/subtitle URLs.",
+    "Replaced comment authors, author IDs, comment text, danmaku text, and danmaku user hash fields with deterministic placeholders.",
+    "Kept raw yt-dlp field names and representative scalar types."
+  ],
+  "entries": [
+    {
+      "file": "youtube_metadata.info.json",
+      "provider": "youtube",
+      "purpose": "metadata",
+      "public_source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "collection_date": "2026-05-28",
+      "collection_command": "yt-dlp --cache-dir /private/tmp/video-research-fixtures/cache --skip-download --write-info-json --no-playlist -o 'youtube_metadata.%(ext)s' 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'",
+      "known_missing_fields": [],
+      "volatility_notes": [
+        "view_count, like_count, comment_count, thumbnails, subtitles, and title metadata can change over time.",
+        "Signed upstream subtitle URLs were intentionally removed from the committed fixture."
+      ]
+    },
+    {
+      "file": "youtube_comments.info.json",
+      "provider": "youtube",
+      "purpose": "comments",
+      "public_source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "collection_date": "2026-05-28",
+      "collection_command": "yt-dlp --cache-dir /private/tmp/video-research-fixtures/cache --skip-download --write-info-json --write-comments --extractor-args 'youtube:comment_sort=top;max_comments=12' --no-playlist -o 'youtube_comments.%(ext)s' 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'",
+      "known_missing_fields": [
+        "comments[].url"
+      ],
+      "volatility_notes": [
+        "Top comments, like counts, pinned status, and timestamps can change over time.",
+        "Only the first six sanitized comments are retained for offline characterization."
+      ]
+    },
+    {
+      "file": "bilibili_metadata.info.json",
+      "provider": "bilibili",
+      "purpose": "metadata",
+      "public_source_url": "https://www.bilibili.com/video/BV1np4y1e7oN/",
+      "collection_date": "2026-05-28",
+      "collection_command": "yt-dlp --cache-dir /private/tmp/video-research-fixtures/cache --skip-download --write-info-json --no-playlist -o 'bilibili_metadata.%(ext)s' 'https://www.bilibili.com/video/BV1np4y1e7oN/'",
+      "known_missing_fields": [
+        "subtitles regular caption entries"
+      ],
+      "volatility_notes": [
+        "Counts, title, tags, and anthology page metadata can change over time.",
+        "yt-dlp reported that regular subtitles require login, but public danmaku XML remained available without authentication."
+      ]
+    },
+    {
+      "file": "bilibili_danmaku.xml",
+      "provider": "bilibili",
+      "purpose": "timed-text-danmaku",
+      "public_source_url": "https://www.bilibili.com/video/BV1np4y1e7oN/",
+      "collection_date": "2026-05-28",
+      "collection_command": "yt-dlp --cache-dir /private/tmp/video-research-fixtures/cache --skip-download --write-subs --sub-langs danmaku --sub-format xml --no-playlist -o 'bilibili_danmaku_subs.%(ext)s' 'https://www.bilibili.com/video/BV1np4y1e7oN/'",
+      "known_missing_fields": [
+        "language"
+      ],
+      "volatility_notes": [
+        "Danmaku entries can be moderated or added after collection.",
+        "The XML p attribute carries start time and display metadata, but no explicit language code."
+      ]
+    }
+  ]
+}
