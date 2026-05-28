@@ -629,6 +629,27 @@ hop 3: complete, bd ready empty
 7. Run against a disposable real-ish sandbox repo.
 8. Promote patterns back into skillmonger source if stable.
 
+## Decision Record
+
+### 2026-05-28: first real Codex canary approval
+
+Human approval for `skillmonger-a0b.7` chose a bounded sandbox canary, not full production promotion.
+
+- Production placement is deferred until after the first real canary passes. For the canary, create or use a sandbox-only wrapper at `/Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh`.
+- Do not promote the supervisor into skillmonger source or `yolobox-pattern` until the canary result is reviewed.
+- Keep `rbl` and `rol` separate. `rbl` remains the direct worker loop; `rol` is the orchestrated supervisor loop.
+- First canary workspace: `/Users/kevin/Development/sandbox/ralph-supervisor-canary`.
+- First canary harness and mode: Codex harness with yolo mode allowed only because the resolved workspace is under `/Users/kevin/Development/sandbox`.
+- Required canary limits: `--require-clean-start`, `--max-hops 1`, `--max-issues-total 1`.
+- Warning policy: stop on validation warning; do not keep going on validation warning.
+- Stop conditions: validation warning or failure, missing or bad handoff, dirty unexplained handoff, rate-limit retry budget exhausted, harness failure, manual-intervention handoff, or any failed sandbox/yolo safety check.
+
+Approved canary command, after the sandbox wrapper exists:
+
+```bash
+/Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh --harness codex --require-clean-start --max-hops 1 --max-issues-total 1 /Users/kevin/Development/sandbox/ralph-supervisor-canary
+```
+
 ## Acceptance Criteria
 
 - Supervisor refuses yolo mode outside `~/Development/sandbox/...`.
@@ -644,8 +665,8 @@ hop 3: complete, bd ready empty
 
 ## Open Questions
 
-- Should the production supervisor live in skillmonger, sandbox tooling, or yolobox-pattern?
-- Should `rbl` eventually delegate to the orchestrated loop for `codex`, or should both remain explicit?
+- Production supervisor placement is deferred until after the first real canary. The approved canary placement is a sandbox-only wrapper at `/Users/kevin/Development/sandbox/ralph-orchestrator-loop.sh`.
+- `rbl` and `rol` remain explicit and separate until canary evidence supports consolidation.
 - Should orchestrator hops use explicit token goals where available, or rely on fallback caps in non-interactive `codex exec`?
 - How should the supervisor discover the Codex session id reliably for `pj` validation?
 - Should dirty-but-documented handoffs be accepted in production, or only in experiments?
