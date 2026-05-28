@@ -26,13 +26,13 @@ Built-in compaction avoided: yes
 - Staged files: none created by fake harness
 - Uncommitted files: run artifacts under .ralph-orchestrator-runs
 
-## Next Command
+## Next Step
 Run:
 
 ```bash
 experiments/ralph-context-handoff/scripts/run-supervisor.sh --harness fake --scenario valid-handoff --run-id {{RUN_ID}} --no-yolo {{WORKSPACE}}
 ```
 
-## Relevant Files
+Relevant files:
 - experiments/ralph-context-handoff/scripts/run-supervisor.sh
 - experiments/ralph-context-handoff/fixtures/supervisor-fake/valid-handoff/handoff.md
