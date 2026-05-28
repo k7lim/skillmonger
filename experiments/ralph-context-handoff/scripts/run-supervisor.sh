@@ -21,6 +21,7 @@ Options:
   --validate-cmd CMD
   --dry-run
   --no-yolo
+  --require-clean-start
   -h, --help
 EOF_USAGE
 }
@@ -66,9 +67,29 @@ assert_sandbox_for_yolo() {
     "$HOME"/Development/sandbox|"$HOME"/Development/sandbox/*) ;;
     *)
       echo "Refusing yolo supervisor outside ~/Development/sandbox: $workspace" >&2
+      echo "Recovery: rerun with --no-yolo for dry-run inspection, or copy the disposable workspace under ~/Development/sandbox." >&2
       exit 10
       ;;
   esac
+}
+
+assert_clean_start() {
+  local workspace="$1"
+  local status_output
+
+  if ! git -C "$workspace" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "--require-clean-start needs a git workspace: $workspace" >&2
+    echo "Recovery: initialize git, choose a git workspace, or rerun without --require-clean-start after inspecting the state." >&2
+    exit 11
+  fi
+
+  status_output="$(git -C "$workspace" status --porcelain)"
+  if [[ -n "$status_output" ]]; then
+    echo "Refusing dirty workspace with --require-clean-start: $workspace" >&2
+    echo "$status_output" >&2
+    echo "Recovery: commit, stash, or otherwise preserve these changes before rerunning. No harness was launched." >&2
+    exit 11
+  fi
 }
 
 write_run_env() {
@@ -89,6 +110,7 @@ HANDOFF_DIR=$HANDOFF_DIR
 VALIDATE_CMD=$VALIDATE_CMD
 DRY_RUN=$DRY_RUN
 NO_YOLO=$NO_YOLO
+REQUIRE_CLEAN_START=$REQUIRE_CLEAN_START
 EOF_RUN_ENV
 }
 
@@ -199,6 +221,7 @@ RUN_ID="$(timestamp_run_id)"
 VALIDATE_CMD=""
 DRY_RUN="0"
 NO_YOLO="0"
+REQUIRE_CLEAN_START="0"
 WORKSPACE_ARG=""
 
 while [[ $# -gt 0 ]]; do
@@ -292,6 +315,10 @@ while [[ $# -gt 0 ]]; do
       NO_YOLO="1"
       shift
       ;;
+    --require-clean-start)
+      REQUIRE_CLEAN_START="1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -344,6 +371,10 @@ if [[ "$NO_YOLO" != "1" ]]; then
   assert_sandbox_for_yolo "$WORKSPACE"
 fi
 
+if [[ "$REQUIRE_CLEAN_START" == "1" ]]; then
+  assert_clean_start "$WORKSPACE"
+fi
+
 EXPERIMENT_RUN_ID="$(extract_experiment_run_id "$WORKSPACE")"
 RUN_DIR="$WORKSPACE/.ralph-orchestrator-runs/$RUN_ID"
 HOP_DIR="$RUN_DIR/hop-001"
@@ -362,6 +393,7 @@ write_run_env "$RUN_DIR/run.env"
   printf 'mode=%s\n' "$MODE"
   printf 'dry_run=%s\n' "$DRY_RUN"
   printf 'no_yolo=%s\n' "$NO_YOLO"
+  printf 'require_clean_start=%s\n' "$REQUIRE_CLEAN_START"
 } > "$RUN_DIR/supervisor.log"
 
 write_prompt "$HOP_DIR/prompt.md" "1" "$EXPECTED_HANDOFF" "$PREVIOUS_HANDOFF"
