@@ -1,0 +1,6 @@
+# Project-level ffmpeg capability for yolobox.
+# Copy this to .yolobox.toml only in projects that need media inspection,
+# transcoding, clipping, or containerized audio/video tooling.
+
+[customize]
+packages = ["ffmpeg"]
