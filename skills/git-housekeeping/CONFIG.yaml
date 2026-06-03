@@ -27,10 +27,7 @@ triggers:
 dependencies:
   tools:
     - git
-  skills:
-    - review
-    - diagnose
-    - tdd
+  skills: [review, diagnose, tdd]
 
 loading:
   primary: SKILL.md
