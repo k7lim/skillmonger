@@ -1,6 +1,6 @@
 ---
 name: agent-cli-playbook
-description: Use for agent-friendly shell, terminal, Bash, and CLI command selection: search with rg --json or bounded rg -n -C, read with bat --plain --color=never, inspect raw git diff --no-ext-diff instead of delta, validate JSON with jq -e, query SQLite with sqlite3 -json, find listeners/processes with lsof and ps, and check HTTP with curl status/content-type/body validation.
+description: "Use for agent-friendly shell, terminal, Bash, and CLI command selection: search with rg --json or bounded rg -n -C, read with bat --plain --color=never, inspect raw git diff --no-ext-diff instead of delta, validate JSON with jq -e, query SQLite with sqlite3 -json, find listeners/processes with lsof and ps, and check HTTP with curl status/content-type/body validation."
 metadata:
   short-description: Agent-friendly CLI command defaults
 ---
