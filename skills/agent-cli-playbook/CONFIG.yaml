@@ -8,17 +8,25 @@ skill:
 triggers:
   phrases:
     - "agent CLI playbook"
+    - "agent shell playbook"
     - "default command shapes"
     - "agent-friendly commands"
     - "CLI defaults"
+    - "shell command defaults"
+    - "terminal command defaults"
   keywords:
     - rg
+    - ripgrep
     - bat
     - jq
     - sqlite3
     - lsof
     - curl
     - git diff
+    - delta
+    - shell
+    - terminal
+    - command-line
 
 dependencies: {}
 
