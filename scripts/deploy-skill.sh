@@ -14,13 +14,6 @@ TOOL_PATHS=(
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
 )
 
-# Yolobox mappings — skills are copied (not symlinked) because only
-# ~/Development is mounted into the container; ~/.local is not accessible.
-YOLOBOX_TOOL_PATHS=(
-  "claude:$HOME/.claude-yolobox/skills"
-  "codex:$HOME/.codex-yolobox/skills"
-)
-
 # Parse arguments
 SKILL_DIR=""
 DO_GLOBAL=""
@@ -69,10 +62,6 @@ while [[ $# -gt 0 ]]; do
       echo "  ~/.claude/skills/<name>           (Claude Code)"
       echo "  ~/.codex/skills/<name>            (Codex)"
       echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
-      echo ""
-      echo "Yolobox paths (copies, not symlinks):"
-      echo "  ~/.claude-yolobox/skills/<name>   (Claude Code Yolobox)"
-      echo "  ~/.codex-yolobox/skills/<name>    (Codex Yolobox)"
       echo ""
       echo "Local paths (copied):"
       echo "  <dir>/.claude/skills/<name>/      (Claude Code)"
@@ -200,19 +189,6 @@ if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
         rm -rf "$global_path/$SKILL_NAME"
         ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
         echo "✓ Symlinked $global_path/$SKILL_NAME"
-      fi
-    done
-
-    # Yolobox: copy instead of symlink (container can't see ~/.local)
-    for entry in "${YOLOBOX_TOOL_PATHS[@]}"; do
-      IFS=':' read -r tool global_path <<< "$entry"
-      if tool_enabled "$tool"; then
-        if [ -d "$global_path" ]; then
-          rm -rf "$global_path/$SKILL_NAME"
-          cp -r "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
-          find "$global_path/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
-          echo "✓ Copied to $global_path/$SKILL_NAME (yolobox)"
-        fi
       fi
     done
   fi
