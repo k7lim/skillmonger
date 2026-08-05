@@ -1,0 +1,46 @@
+# project-juggler Skill Configuration
+# Tri-file architecture extension
+
+skill:
+  name: project-juggler
+  version: 1.0.0
+  created: 2026-08-04
+  updated: 2026-08-04
+  author: kevin
+
+triggers:
+  phrases:
+    - "what was I working on"
+    - "where did I discuss"
+    - "find that old chat"
+    - "which project was that in"
+    - "resume that session"
+  keywords:
+    - pj
+    - project juggler
+    - session history
+    - past chats
+    - cross-project memory
+
+dependencies:
+  tools:
+    - Bash
+  binaries:
+    - pj
+    - jq
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
