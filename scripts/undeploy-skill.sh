@@ -12,7 +12,7 @@ TOOL_PATHS=(
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
 )
 
-YOLOBOX_TOOL_PATHS=(
+SANDBOX_TOOL_PATHS=(
   "claude:$HOME/.claude-yolobox/skills"
   "codex:$HOME/.codex-yolobox/skills"
 )
@@ -103,14 +103,15 @@ if [ -n "$DO_GLOBAL" ]; then
     fi
   done
 
-  # Remove yolobox copies
-  for entry in "${YOLOBOX_TOOL_PATHS[@]}"; do
+  # Remove copies from the separate SRT agent homes. The paths retain their
+  # legacy names until the SRT credential-home migration is completed.
+  for entry in "${SANDBOX_TOOL_PATHS[@]}"; do
     IFS=':' read -r tool global_path <<< "$entry"
     if tool_enabled "$tool"; then
       target="$global_path/$SKILL_NAME"
       if [ -d "$target" ]; then
         rm -rf "$target"
-        echo "✓ Removed $target (yolobox)"
+        echo "✓ Removed $target (SRT sandbox)"
         REMOVED=$((REMOVED + 1))
       fi
     fi

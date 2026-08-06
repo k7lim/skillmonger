@@ -14,6 +14,15 @@ TOOL_PATHS=(
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
 )
 
+# SRT points Claude and Codex at separate credential homes. These paths retain
+# their legacy names for now, but they are SRT agent homes, not container
+# deployment targets. Skills must be copied because SRT denies access to the
+# shared ~/.local store that backs the host symlinks.
+SANDBOX_TOOL_PATHS=(
+  "claude:$HOME/.claude-yolobox/skills"
+  "codex:$HOME/.codex-yolobox/skills"
+)
+
 # Parse arguments
 SKILL_DIR=""
 DO_GLOBAL=""
@@ -62,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       echo "  ~/.claude/skills/<name>           (Claude Code)"
       echo "  ~/.codex/skills/<name>            (Codex)"
       echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
+      echo ""
+      echo "SRT sandbox paths (copies, not symlinks):"
+      echo "  ~/.claude-yolobox/skills/<name>   (Claude Code under SRT)"
+      echo "  ~/.codex-yolobox/skills/<name>    (Codex under SRT)"
       echo ""
       echo "Local paths (copied):"
       echo "  <dir>/.claude/skills/<name>/      (Claude Code)"
@@ -189,6 +202,19 @@ if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
         rm -rf "$global_path/$SKILL_NAME"
         ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
         echo "✓ Symlinked $global_path/$SKILL_NAME"
+      fi
+    done
+
+    # SRT agent homes need real copies: the sandbox cannot follow the host
+    # symlinks into the denied ~/.local skill store.
+    for entry in "${SANDBOX_TOOL_PATHS[@]}"; do
+      IFS=':' read -r tool sandbox_path <<< "$entry"
+      if tool_enabled "$tool" && [ -d "$(dirname "$sandbox_path")" ]; then
+        mkdir -p "$sandbox_path"
+        rm -rf "$sandbox_path/$SKILL_NAME"
+        cp -r "$SKILLMONGER_DIR/$SKILL_NAME" "$sandbox_path/$SKILL_NAME"
+        find "$sandbox_path/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
+        echo "✓ Copied to $sandbox_path/$SKILL_NAME (SRT sandbox)"
       fi
     done
   fi

@@ -98,6 +98,11 @@ scripts/deploy-skill.sh skills/my-skill/ --global --format zip
 | OpenCode | `~/.config/opencode/skills/` | `.opencode/skills/` |
 | Claude.ai | Upload zip via Settings > Features | — |
 
+Global deployment also copies skills into the separate Claude and Codex homes
+used under SRT (`~/.claude-yolobox/skills/` and
+`~/.codex-yolobox/skills/`). Those legacy-named homes cannot use the host
+symlinks because SRT denies access to the shared `~/.local` skill store.
+
 ## The Feedback Loop
 
 Every SKILL.md includes an "After Execution" epilogue. The mechanism matches the skill's output type.
