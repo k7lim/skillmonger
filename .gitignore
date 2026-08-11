@@ -26,3 +26,6 @@ __pycache__/
 .venv/
 venv/
 .skill-backups/
+
+# sync-upstream.sh review scratch
+.upstream-review/

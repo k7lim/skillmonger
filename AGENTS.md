@@ -51,6 +51,9 @@ vendor/              # External repos (gitignored content, don't edit)
 | `analyze-feedback.sh` | Summarize feedback trends | skill FEEDBACK.jsonl files |
 | `compact-memo.sh` | Guide MEMO.md compaction | skill's CONFIG.yaml, FEEDBACK.jsonl |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
+| `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |
+| `check-upstream.sh` | Report upstream/local drift for adopted skills | `scripts/lib/upstream.py` |
+| `sync-upstream.sh` | Pull upstream changes into an adopted skill | `scripts/lib/upstream.py` |
 
 ## What NOT to Edit
 
@@ -96,6 +99,20 @@ scripts/ship-skill.sh ~/Development/sandbox/skills/my-skill
 ```
 
 `BRIEF.md` is a disposable task brief with interface contracts and build specs — not long-term context. It is not shipped. `PLAN.md` carries the seed idea and any detailed plan into the sandbox.
+
+**To adopt a skill from someone else's repo:** Follow
+`docs/adopting-external-skills.md`. Short version:
+
+```bash
+scripts/adopt-skill.sh LaurentiuGabriel/learnscape skills/isometric-explainer
+# adapt SKILL.md only; keep references/ and assets/ verbatim
+scripts/ship-skill.sh ~/Development/sandbox/skills/isometric-explainer
+```
+
+Adopted skills record provenance in `CONFIG.yaml:upstream` (authoritative) and
+`SOURCE.md` (generated header + zone table). `scripts/check-upstream.sh` reports
+drift; `scripts/sync-upstream.sh <skill>` applies upstream changes, fast-forwarding
+`verbatim` files and blocking on `adapted` ones.
 
 **To add evaluation:** Create an evaluate script in `skills/<name>/scripts/` (any language — see Skill Script Interface). It reads skill output from stdin, outputs JSON with `outcome` (1-5), `note`, `checks`, and `source` fields. See `skills/centers-of-excellence/scripts/evaluate.sh` as the exemplar. Not all skills need this — see feedback patterns above.
 

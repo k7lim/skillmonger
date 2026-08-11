@@ -3,6 +3,18 @@ skill:
   version: 1.0.0
   source: https://github.com/remotion-dev/remotion/tree/main/packages/skills/skills/remotion
 
+upstream:
+  repo: "https://github.com/remotion-dev/remotion"
+  vendor: vendor/remotion-skills
+  path: packages/skills/skills/remotion
+  ref: 805a30b
+  commit: 805a30b705841c53ab0b19602972ebb5ece6a324
+  license: Remotion License (NOT redistributable)
+  synced: 2026-01-26
+  status: tracked
+  path_map:
+    references/: rules/
+
 triggers:
   phrases:
     - "remotion"

@@ -1,0 +1,55 @@
+skill:
+  name: isometric-explainer
+  version: 1.0.0
+  created: 2026-08-10
+  updated: 2026-08-10
+  author: kevin
+
+upstream:
+  repo: https://github.com/LaurentiuGabriel/learnscape
+  vendor: vendor/learnscape
+  path: skills/isometric-explainer
+  ref: 5c8af77
+  commit: 5c8af77808ba11bff6f4b46297dc45514247c4a5
+  license: MIT License
+  synced: 2026-08-10
+  status: tracked
+
+triggers:
+  phrases:
+    - "explain how X works visually"
+    - "build an interactive explainer"
+    - "explorable explanation"
+    - "visualise the whole pipeline"
+    - "teach X with an animation"
+  keywords:
+    - isometric
+    - explainer
+    - explorable
+    - simulation
+    - canvas
+    - TokenTown
+    - EngineWorks
+
+dependencies:
+  tools:
+    - node
+    - python3
+  optional:
+    - playwright
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000

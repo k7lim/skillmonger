@@ -5,6 +5,17 @@ skill:
   updated: 2026-05-26
   author: kevin
 
+upstream:
+  repo: "https://github.com/mattpocock/skills"
+  vendor: vendor/mattpocock-skills
+  path: skills/productivity/caveman
+  ref: b8be62f
+  commit: b8be62ffacb0118fa3eaa29a0923c87c8c11985c
+  license: MIT License
+  synced: 2026-05-25
+  status: orphaned
+  last_seen_ref: b8be62f
+
 triggers:
   phrases:
     - "caveman mode"
