@@ -57,6 +57,7 @@ vendor/              # External repos (gitignored content, don't edit)
 - `vendor/` — External repos. Changes get overwritten.
 - `.claude/skills/` — Deployed symlinks. Edit source in `skills/` instead.
 - `~/.claude-yolobox/skills/`, `~/.codex-yolobox/skills/` — Deployed copies for SRT agents. Re-deploy from `skills/` to update.
+- `~/.pi/agent/skills/` — Deployed copies for Pi on both host and SRT. Re-deploy from `skills/` to update.
 - `skills/remotion/references/` — Sourced from upstream remotion-dev/remotion.
 - `FEEDBACK.jsonl` files — Append-only. Use `log-feedback.sh` to add entries.
 

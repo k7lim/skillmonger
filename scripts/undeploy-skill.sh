@@ -10,6 +10,7 @@ TOOL_PATHS=(
   "claude:$HOME/.claude/skills:.claude/skills"
   "codex:$HOME/.codex/skills:.codex/skills"
   "opencode:$HOME/.config/opencode/skills:.opencode/skills"
+  "pi:$HOME/.pi/agent/skills:.pi/skills"
 )
 
 SANDBOX_TOOL_PATHS=(
@@ -42,9 +43,9 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --global          Remove from ~/.local/share/skillmonger/skills/ and"
-      echo "                    remove symlinks from user-global tool directories"
+      echo "                    remove entries from user-global tool directories"
       echo "  --local <dir>     Remove copies from project tool directories"
-      echo "  --tools <list>    Comma-separated tools: claude,codex,opencode (default: all)"
+      echo "  --tools <list>    Comma-separated tools: claude,codex,opencode,pi (default: all)"
       echo ""
       echo "At least one of --global or --local must be specified."
       exit 0
@@ -72,7 +73,7 @@ fi
 
 # Default to all tools if not specified
 if [ -z "$TOOLS" ]; then
-  TOOLS="claude,codex,opencode"
+  TOOLS="claude,codex,opencode,pi"
 fi
 
 echo "Undeploying skill: $SKILL_NAME"
@@ -88,13 +89,13 @@ REMOVED=0
 
 # Global removal
 if [ -n "$DO_GLOBAL" ]; then
-  # Remove symlinks from tool directories
+  # Remove links or copies from tool directories.
   for entry in "${TOOL_PATHS[@]}"; do
     IFS=':' read -r tool global_path local_path <<< "$entry"
     if tool_enabled "$tool"; then
       target="$global_path/$SKILL_NAME"
       if [ -L "$target" ] || [ -e "$target" ]; then
-        rm -f "$target"
+        rm -rf "$target"
         echo "✓ Removed $target"
         REMOVED=$((REMOVED + 1))
       else

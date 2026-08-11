@@ -1,17 +1,18 @@
 #!/bin/bash
 # deploy-skill.sh - Deploy skill to tool directories
-# Global: ~/.local/share/skillmonger/skills/ with symlinks to tool locations
+# Global: ~/.local/share/skillmonger/skills/ with links or copies to tool paths
 # Local: copies skill into project tool directories
 set -euo pipefail
 
 SKILLMONGER_DIR="$HOME/.local/share/skillmonger/skills"
 
 # Tool directory mappings
-# Format: tool:global_path:local_path
+# Format: tool:global_path:local_path:global_mode
 TOOL_PATHS=(
-  "claude:$HOME/.claude/skills:.claude/skills"
-  "codex:$HOME/.codex/skills:.codex/skills"
-  "opencode:$HOME/.config/opencode/skills:.opencode/skills"
+  "claude:$HOME/.claude/skills:.claude/skills:symlink"
+  "codex:$HOME/.codex/skills:.codex/skills:symlink"
+  "opencode:$HOME/.config/opencode/skills:.opencode/skills:symlink"
+  "pi:$HOME/.pi/agent/skills:.pi/skills:copy"
 )
 
 # SRT points Claude and Codex at separate credential homes. These paths retain
@@ -58,19 +59,20 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --global          Install to ~/.local/share/skillmonger/skills/ and"
-      echo "                    symlink from user-global tool directories"
+      echo "                    distribute to user-global tool directories"
       echo "  --store-only      Install to ~/.local/share/skillmonger/skills/ only"
       echo "                    (no symlinks to tool directories)"
       echo "  --local <dir>     Copy skill into project tool directories"
-      echo "  --tools <list>    Comma-separated tools: claude,codex,opencode (default: all)"
+      echo "  --tools <list>    Comma-separated tools: claude,codex,opencode,pi (default: all)"
       echo "  --format zip      Also create zip in dist/ for Claude.ai upload"
       echo ""
       echo "At least one of --global, --store-only, or --local must be specified."
       echo ""
-      echo "Global paths (symlinks):"
+      echo "Global paths:"
       echo "  ~/.claude/skills/<name>           (Claude Code)"
       echo "  ~/.codex/skills/<name>            (Codex)"
       echo "  ~/.config/opencode/skills/<name>  (OpenCode)"
+      echo "  ~/.pi/agent/skills/<name>         (Pi; copied for SRT access)"
       echo ""
       echo "SRT sandbox paths (copies, not symlinks):"
       echo "  ~/.claude-yolobox/skills/<name>   (Claude Code under SRT)"
@@ -80,6 +82,7 @@ while [[ $# -gt 0 ]]; do
       echo "  <dir>/.claude/skills/<name>/      (Claude Code)"
       echo "  <dir>/.codex/skills/<name>/       (Codex)"
       echo "  <dir>/.opencode/skills/<name>/    (OpenCode)"
+      echo "  <dir>/.pi/skills/<name>/          (Pi)"
       exit 0
       ;;
     *)
@@ -107,7 +110,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Default to all tools if not specified
 if [ -z "$TOOLS" ]; then
-  TOOLS="claude,codex,opencode"
+  TOOLS="claude,codex,opencode,pi"
 fi
 
 echo "Deploying skill: $SKILL_NAME"
@@ -148,7 +151,7 @@ if [ -f "$CONFIG_FILE" ]; then
       fi
       if [ -n "$LOCAL_DIR" ] && [ -n "$LOCAL_DIR" ]; then
         for entry in "${TOOL_PATHS[@]}"; do
-          IFS=':' read -r tool global_path local_path <<< "$entry"
+          IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
           if tool_enabled "$tool"; then
             if [ -n "$DO_GLOBAL" ] && [ -L "$global_path/$dep" -o -d "$global_path/$dep" ]; then
               found=1
@@ -160,7 +163,7 @@ if [ -f "$CONFIG_FILE" ]; then
         done
       elif [ -n "$DO_GLOBAL" ]; then
         for entry in "${TOOL_PATHS[@]}"; do
-          IFS=':' read -r tool global_path local_path <<< "$entry"
+          IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
           if tool_enabled "$tool" && [ -L "$global_path/$dep" -o -d "$global_path/$dep" ]; then
             found=1
           fi
@@ -196,12 +199,18 @@ if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
   # Create symlinks in tool directories (only for --global, not --store-only)
   if [ -n "$DO_GLOBAL" ]; then
     for entry in "${TOOL_PATHS[@]}"; do
-      IFS=':' read -r tool global_path local_path <<< "$entry"
+      IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
       if tool_enabled "$tool"; then
         mkdir -p "$global_path"
         rm -rf "$global_path/$SKILL_NAME"
-        ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
-        echo "✓ Symlinked $global_path/$SKILL_NAME"
+        if [ "$global_mode" = "copy" ]; then
+          cp -r "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
+          find "$global_path/$SKILL_NAME" -name ".DS_Store" -delete 2>/dev/null || true
+          echo "✓ Copied to $global_path/$SKILL_NAME"
+        else
+          ln -s "$SKILLMONGER_DIR/$SKILL_NAME" "$global_path/$SKILL_NAME"
+          echo "✓ Symlinked $global_path/$SKILL_NAME"
+        fi
       fi
     done
 
@@ -225,7 +234,7 @@ if [ -n "$LOCAL_DIR" ]; then
   LOCAL_DIR="$(cd "$LOCAL_DIR" && pwd)"
   echo ""
   for entry in "${TOOL_PATHS[@]}"; do
-    IFS=':' read -r tool global_path local_path <<< "$entry"
+    IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
     if tool_enabled "$tool"; then
       target_dir="$LOCAL_DIR/$local_path"
       mkdir -p "$target_dir"

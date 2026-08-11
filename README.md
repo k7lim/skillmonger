@@ -79,7 +79,7 @@ See [docs/skill-format.md](docs/skill-format.md) for SKILL.md frontmatter requir
 scripts/deploy-skill.sh skills/my-skill/ --global
 
 # Specific tools only
-scripts/deploy-skill.sh skills/my-skill/ --global --tools claude,codex
+scripts/deploy-skill.sh skills/my-skill/ --global --tools claude,codex,pi
 
 # Local (project) deployment
 scripts/deploy-skill.sh skills/my-skill/ --local .
@@ -96,12 +96,15 @@ scripts/deploy-skill.sh skills/my-skill/ --global --format zip
 | Claude Code | `~/.claude/skills/` | `.claude/skills/` |
 | Codex | `~/.codex/skills/` | `.codex/skills/` |
 | OpenCode | `~/.config/opencode/skills/` | `.opencode/skills/` |
+| Pi | `~/.pi/agent/skills/` | `.pi/skills/` |
 | Claude.ai | Upload zip via Settings > Features | — |
 
 Global deployment also copies skills into the separate Claude and Codex homes
 used under SRT (`~/.claude-yolobox/skills/` and
 `~/.codex-yolobox/skills/`). Those legacy-named homes cannot use the host
 symlinks because SRT denies access to the shared `~/.local` skill store.
+Pi uses its regular `~/.pi/agent` home under SRT, so its global skills are also
+copied rather than symlinked.
 
 ## The Feedback Loop
 
