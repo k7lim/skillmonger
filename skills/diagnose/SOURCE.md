@@ -7,16 +7,16 @@
 | | |
 |---|---|
 | Repository | https://github.com/mattpocock/skills |
-| Upstream path | `skills/engineering/diagnose` |
-| Pinned ref | `b8be62f` |
-| Pinned commit | `b8be62ffacb0118fa3eaa29a0923c87c8c11985c` |
+| Upstream path | `skills/engineering/diagnosing-bugs` |
+| Previous upstream path | `skills/engineering/diagnose` |
+| Pinned ref | `v1.2.3` |
+| Pinned commit | `6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` |
 | License | MIT License |
-| Status | renamed |
-| Last synced | 2026-05-25 |
+| Status | tracked |
+| Last synced | 2026-08-10 |
 | Vendor checkout | `vendor/mattpocock-skills` |
 
 <!-- generated-from-config:end -->
-
 ## Zones
 
 `verbatim` files are byte-identical to upstream at the pinned commit and
@@ -26,10 +26,13 @@ with a reason below — or, preferably, expressed in `OVERLAY.md` instead.
 | File | Zone |
 |---|---|
 | `SKILL.md` | adapted |
+| `agents/openai.yaml` | verbatim |
 | `scripts/hitl-loop.template.sh` | verbatim |
 | `CONFIG.yaml` | ours |
 | `FEEDBACK.jsonl` | ours |
 | `MEMO.md` | ours |
+| `SOURCE.md` | ours |
+
 
 ## Adaptation notes
 

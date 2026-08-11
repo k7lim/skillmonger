@@ -1,0 +1,45 @@
+skill:
+  name: teach
+  version: 0.1.0
+  created: 2026-08-10
+  updated: 2026-08-10
+  author: kevin
+
+upstream:
+  repo: "https://github.com/mattpocock/skills"
+  vendor: vendor/mattpocock-skills
+  path: skills/productivity/teach
+  ref: v1.2.3
+  commit: 6acc160e4e0cd062dbbbd7a1b26ae92855edf07e
+  license: MIT License
+  synced: 2026-08-10
+  status: tracked
+
+triggers:
+  phrases:
+    - "teach me"
+    - "explain this concept"
+    - "I want to learn"
+    - "help me understand"
+  keywords:
+    - teach
+    - learn
+    - tutorial
+    - concept
+    - explain
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
