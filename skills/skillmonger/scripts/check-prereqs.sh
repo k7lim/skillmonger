@@ -57,10 +57,36 @@ check_scripts() {
   checks+=("{\"name\":\"$name\",\"status\":\"ok\"}")
 }
 
+check_adoption_tooling() {
+  local name="adoption-pipeline"
+  local missing=()
+
+  for script in adopt-skill.sh check-upstream.sh sync-upstream.sh; do
+    [ -x "$SKILLMONGER_ROOT/scripts/$script" ] || missing+=("$script")
+  done
+  [ -f "$SKILLMONGER_ROOT/scripts/lib/upstream.py" ] || missing+=("lib/upstream.py")
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"scripts\":[\"${missing[*]}\"],\"note\":\"Adopting or syncing external skills is unavailable\"}")
+    return  # not a blocker for the original-skill workflow
+  fi
+
+  # Every adoption script hard-exits without PyYAML.
+  if ! python3 -c "import yaml" > /dev/null 2>&1; then
+    checks+=("{\"name\":\"$name\",\"status\":\"degraded\",\"note\":\"PyYAML missing; adopt/check/sync-upstream will fail. Run: pip install pyyaml\"}")
+    return
+  fi
+
+  local adopted
+  adopted=$(grep -l '^upstream:' "$SKILLMONGER_ROOT"/skills/*/CONFIG.yaml 2> /dev/null | wc -l | tr -d ' ')
+  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"adopted_skills\":$adopted}")
+}
+
 # Run checks
 check_skillmonger_dir
 check_sandbox_dir
 check_scripts
+check_adoption_tooling
 
 # Build checks array
 checks_json=""

@@ -2,9 +2,9 @@
 
 skill:
   name: skillmonger
-  version: 0.1.0
+  version: 0.2.0
   created: 2025-02-13
-  updated: 2025-02-13
+  updated: 2026-08-10
 
 triggers:
   phrases:
@@ -17,18 +17,38 @@ triggers:
     - "deploy skill"
     - "where did I leave off"
     - "continue skill work"
+    - "adopt a skill"
+    - "adopt this repo's skills"
+    - "sync upstream"
+    - "check upstream"
+    - "is this skill out of date"
   keywords:
     - skillmonger
     - seeds
     - sandbox
     - ship
     - deploy
+    - adopt
+    - upstream
+    - vendor
+    - provenance
+    - drift
 
 dependencies:
   tools: []
   cli:
     - bash
+    - git
+    - python3
+  optional:
+    - gh
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
 
 compaction:
   cycle_threshold: 15
-  iteration_count: 10
+  iteration_count: 11
