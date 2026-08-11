@@ -16,6 +16,12 @@
 - Codex session titles are often boilerplate (`<environment_context>`,
   `# AGENTS.md instructions for ...`), so match on `snippet` rather than `title`
   when scanning Codex results.
+- Quoted phrases fail silently and badly. Measured 2026-08-10:
+  `pj search "pan sauce steak"` → `No results`; `pj search pan sauce steak` → 9
+  results. Same words, same corpus. Nothing in the output hints that quoting was
+  the problem.
+- `pj show .` and `--project .` return `"No project matching '.'"`. `.` is not a
+  path the project matcher resolves; `--here` is the cwd affordance.
 
 ---
 
@@ -33,6 +39,17 @@ _Empty - patterns will graduate from iterations_
   (`pj-55m.1`). Teaching them would make agents run commands that error out.
 - Treating empty sandbox results as proof that no such work exists. Sandbox `pj`
   usually cannot see host session files.
+- Inventing `pj list --json` (or `--json` on any subcommand). No such flag —
+  argparse prints usage and exits non-zero. JSON is already the default output;
+  `--pretty` is the opt-in for human rendering. Observed repeatedly in 2026-06
+  and 2026-07 sessions, followed by hand-rolled Python to re-parse output that
+  was already JSON.
+- Stopping at `pj search` results without opening a session. Search returns
+  leads with snippets; the answer is usually in the conversation. Across all
+  historical usage `pj chat` was invoked once, against 27 searches.
+- Not paginating. `pj list` defaults to `--limit 20` against 155 projects, and
+  the envelope reports the real count in `meta.total`. Check it before concluding
+  a project does not exist.
 
 ---
 
@@ -41,6 +58,7 @@ _Empty - patterns will graduate from iterations_
 | Date | Version | Change Type | Description |
 |------|---------|-------------|-------------|
 | 2026-08-04 | 1.0.0 | Initial | Skill created against pj 0.3.1; scoped to implemented commands only |
+| 2026-08-10 | 1.1.0 | Refine | Modelled 1,538 historical sessions. Broadened trigger surface to implicit recall cues, added scope→search→read→cite workflow and a Common Mistakes table for the four silent failures. Moved portfolio/annotation commands out to the new project-portfolio skill. |
 
 ---
 

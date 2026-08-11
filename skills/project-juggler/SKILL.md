@@ -1,6 +1,6 @@
 ---
 name: project-juggler
-description: "Use the pj CLI to recover cross-project coding-agent memory: find which project or past Claude Code/Codex session discussed something, list a project's chats, read a specific conversation, get a resume command, or see what to work on next. Trigger on \"what was I working on\", \"where did I discuss X\", \"find that old chat\", \"which project was that in\", \"resume that session\", pj list/next/search/show/chats/chat/resume, or any request needing history older than the current session."
+description: "Recover context from past Claude Code and Codex sessions with the pj CLI: find which project discussed something, read a specific past conversation, or get a resume command. Use whenever a request leans on history older than the current session, including implicit cues — \"have we discussed this before\", \"did I already start this\", \"what did we decide\", \"I thought I'd built that\", \"reload those chats\", \"contextualize yourself first\", \"find prior chats about X\", \"what was I working on\", \"which project was that in\" — and before telling the user that something has never been built or discussed. Also on explicit pj search/show/chats/chat/resume. For picking what to work on next or recording notes, priorities, and tags, use project-portfolio instead."
 metadata:
   short-description: Search and read past agent sessions with pj
 ---
@@ -11,8 +11,32 @@ metadata:
 did this happen, and what was said" across every project on the machine, without
 a daemon or index step.
 
-Read commands are safe to call speculatively. Annotation commands mutate stored
-state and need explicit user intent.
+Read commands are safe to call speculatively. Reach for them without being asked:
+the user's own history is usually the cheapest source of truth, and "I don't have
+context on that" is almost always wrong on this machine.
+
+## When to reach for it unprompted
+
+- The request references work that predates this session — a decision, a URL, a
+  config, an approach that was "already figured out."
+- You are about to say something has not been built, tried, or discussed.
+- You are starting work in a project whose recent history you have not read.
+- The user asks you to pick up, resume, or continue anything.
+- A plan you are writing would duplicate work that may already exist.
+
+## Workflow
+
+Four steps, in order. Skipping straight to a machine-wide search is the most
+common way this goes wrong.
+
+1. **Scope.** If the project is known, use `--here` (cwd) or `--project <name>`.
+   Only search machine-wide when the project genuinely is the unknown.
+2. **Search.** Separate terms, not quoted phrases. Widen with `--regex` or
+   `--sort relevance` before giving up.
+3. **Read.** Search results are leads, not answers. Open the actual conversation
+   with `pj chat <session_id> --no-tools --roles user,assistant`.
+4. **Cite.** Tell the user which session you drew from and offer the resume
+   command, so they can verify and reopen it.
 
 ## Data it sees
 
@@ -26,18 +50,34 @@ JSONL unless the user asks.
 ## Sensors
 
 ```bash
-pj next --limit 5                      # scored recommendations, with reasons
-pj list --state active --limit 20      # states: active stale dormant blocked archived
-pj search auth middleware --limit 8    # cross-project session search
-pj show <project> --sessions 5         # project detail + sessions + resume_cmd
-pj chats <project> --limit 20          # session list with token/message counts
+pj search auth middleware --limit 8         # cross-project session search
+pj search --here rate limit                 # search only the project you are in
+pj show <project> --sessions 5              # project detail + sessions + resume_cmd
+pj chats <project> --limit 20               # session list with token/message counts
 pj chat <session_id> --last 40 --no-tools   # read one conversation
-pj resume <project>                    # shell command to reopen latest session
-pj ports --pretty                      # local listening ports mapped to projects
+pj resume <project>                         # shell command to reopen latest session
 ```
 
 `<project>` is a name, path, or ID prefix. `<session_id>` accepts a prefix.
 `--here` on `search` and `chats` infers the project from the working directory.
+
+## Common mistakes
+
+These are the four that actually recur. Each one is silent — you get an empty or
+misleading result, not an error.
+
+| Mistake | What happens | Do this |
+|---|---|---|
+| `pj search "pan sauce steak"` | Quoted = exact substring. **0 results.** | `pj search pan sauce steak` → 9 results |
+| `pj list --json` | No such flag; prints usage and exits | JSON is already the default; `--pretty` is the opt-in |
+| `pj show .` / `--project .` | `"No project matching '.'"` | `--here` is how you say "this directory" |
+| Unscoped search for a known project | Scans every session file; can hang for many seconds | Scope with `--here`/`--project` first |
+
+Two more worth knowing: search returns *projects* with nested
+`matching_sessions`, so a "1 result" line can still hide the session you want;
+and Codex session titles are usually boilerplate
+(`<environment_context>`, `# AGENTS.md instructions for ...`), so judge Codex
+hits by `snippet`, never by `title`.
 
 ## Search strategy
 
@@ -80,20 +120,16 @@ prompt-sized. `--limit`/`--offset` page `list`, `search`, and `chat`.
 A machine-wide `pj search` scans many session files and can take several seconds.
 Narrow with `--project`/`--here`/`--limit` when you already know the project.
 
-## Actuators
+## Out of scope
 
-These write annotations under `PJ_DATA_DIR` (default `~/.local/share/pj`). Only
-run them when the user asked to record something:
+Portfolio commands — `pj next`, `pj list`, `pj ports`, `pj census`, and the
+annotation writers (`note`, `tag`, `prioritize`, `archive`) — belong to the
+**project-portfolio** skill. Use that one when the question is "what should I
+work on" or "record this for later" rather than "what happened before."
 
-```bash
-pj note <project> "text"                        # note starting "blocked:" sets state blocked
-pj tag <project> <tag>
-pj prioritize <project> <high|medium|low|none>
-pj archive <project>
-```
-
-`pj census serve|start|status|stop` runs a local dashboard server, which is a
-user-facing action, not a sensor. Default bind is `127.0.0.1:8765`.
+One handoff worth making: when you finish substantive work in a project, leaving
+a `pj note <project> "next: ..."` is what lets the next session start from a
+next step instead of re-deriving one. See project-portfolio.
 
 ## Sandbox boundary
 

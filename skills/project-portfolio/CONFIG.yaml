@@ -1,0 +1,47 @@
+skill:
+  name: project-portfolio
+  version: 1.0.0
+  created: 2026-08-10
+  updated: 2026-08-10
+  author: kevin
+triggers:
+  phrases:
+  - what should I work on
+  - what have I been neglecting
+  - what did I touch recently
+  - I have tokens to burn
+  - which projects use
+  - what's still open
+  - triage my projects
+  - leave a note for next time
+  - what's stale
+  keywords:
+  - pj next
+  - pj list
+  - pj note
+  - pj census
+  - pj ports
+  - portfolio
+  - project inventory
+  - prioritize
+  - what to work on
+dependencies:
+  tools:
+  - Bash
+  binaries:
+  - pj
+  - jq
+  skills: [project-juggler]
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+  - CONFIG.yaml
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
