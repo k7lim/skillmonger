@@ -70,7 +70,7 @@ Present 3-5 top videos with quality assessment. For batch queries, one pick per 
 
 - `--flat-playlist` does NOT return like_count, comment_count, chapters, or heatmap. Search gives a fast overview; deep-dive gives the full picture.
 - YouTube search is non-deterministic -- the same query returns different results across runs.
-- Extractor/integration failure: retry once with `../yt-dlp/scripts/run --refresh --version`, then rerun the search.
+- Extractor/integration failure: run `../yt-dlp/scripts/run --version` to trigger the lazy stable update, then retry once.
 - The sp filter codes may silently break if YouTube updates their protobuf schema. If filter results look wrong, re-verify codes against `references/sp-filters.md`.
 - Channel-specific search may require cookies for age-restricted or region-locked channels -- the scripts do not pass cookies.
 - Heatmap data is null for very new or low-view videos. The evaluate script skips the heatmap check when absent.

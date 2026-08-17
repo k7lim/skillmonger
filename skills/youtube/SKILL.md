@@ -14,7 +14,7 @@ Run `scripts/check-prereqs.sh` and parse the JSON output.
 | Missing | Action |
 |---------|--------|
 | python3 | Install Python 3.10+ via system package manager |
-| npx | Install Node.js 18+; the runner uses npx only to acquire yt-dlp |
+| npx | Install Node.js 18+; yt-dlp is acquired lazily on use |
 | jq | `brew install jq` or `apt install jq` -- offer to run |
 | yt-dlp runner | Deploy the sibling `yt-dlp` skill; no global yt-dlp install |
 | ffmpeg | `brew install ffmpeg` -- optional, needed for `--download-sections` clip extraction |
@@ -70,7 +70,7 @@ Use Agent tool to parallelize: one agent per 5-item slice (search) or one agent 
 - **Wrong:** Running `search-transcript` on a video without captions. **Fix:** Always use `--subtitles-only` on the initial search when the workflow will need transcripts. If deep-dive shows no captions, skip that video for clip workflows.
 - **Wrong:** Relying on a single video for transcript work. Transcript fetch can fail even on videos that passed `--subtitles-only` filtering (YouTube may block the request due to geo-restrictions or bot detection). **Fix:** Always attempt transcript fetch on 2-3 candidate videos. If the first fails, try the next. Present only the ones that succeeded.
 - **Wrong:** Running `explore` without passing deep-dive data, causing a redundant metadata fetch. **Fix:** Save deep-dive JSON output and pass it via `--deep-dive-json` to explore.
-- **Wrong:** Installing or invoking a global `yt-dlp`, which becomes stale. **Fix:** Route every call through `../yt-dlp/scripts/run`; retry an integration failure once with `--refresh`.
+- **Wrong:** Installing or invoking a global `yt-dlp`, which becomes stale. **Fix:** Route every call through `../yt-dlp/scripts/run`; it checks the latest stable binary only when yt-dlp is actually used.
 - **Wrong:** Using `--download-sections` without ffmpeg installed. It silently fails or errors. **Fix:** Check `check-prereqs.sh` output for ffmpeg status. If missing, fall back to full download with `-f "best"`.
 - **Wrong:** Resetting rate limit pacing after switching from search to transcript download. **Fix:** Rate limits are per-session across all sub-skills. If you ran 20 searches, start transcript downloads at the conservative tier too.
 - **Wrong:** Running `search` with `--filter views` for time-sensitive queries (e.g., "2025 conference talks"). **Fix:** Use `--filter newest` or `--date year` for recency-sensitive searches; `--filter views` biases toward older popular results.

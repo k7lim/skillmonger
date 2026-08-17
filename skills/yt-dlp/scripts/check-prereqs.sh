@@ -1,5 +1,5 @@
 #!/bin/bash
-# Report whether the cache-local npx/nightly runner can operate.
+# Report whether the lazy npx runner can operate.
 set -euo pipefail
 
 checks=()
@@ -42,4 +42,4 @@ for i in "${!checks[@]}"; do
   checks_json+="${checks[$i]}"
 done
 
-printf '{"ready":%s,"checks":[%s],"context":{"runner":"scripts/run","channel":"nightly"}}\n' "$ready" "$checks_json"
+printf '{"ready":%s,"checks":[%s],"context":{"runner":"scripts/run","acquisition":"npx-on-use","channel":"stable"}}\n' "$ready" "$checks_json"

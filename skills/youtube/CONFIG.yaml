@@ -7,7 +7,7 @@ skill:
     searching, inspecting, clipping, or downloading YouTube content in a single
     workflow -- e.g. "find trailers for these movies and download them" or "find
     conference talks and search their transcripts for X."
-  version: 0.2.0
+  version: 0.2.1
   created: 2026-04-19
   updated: 2026-08-16
   author: kevin

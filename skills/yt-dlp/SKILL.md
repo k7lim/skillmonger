@@ -1,13 +1,11 @@
 ---
 name: yt-dlp
-description: Download videos, audio, and subtitles/transcripts from YouTube and other sites through an auto-updating yt-dlp nightly runner. Use when the user wants playlists, clips, transcripts, audio-only media, or rate-limit-safe downloads.
+description: Download videos, audio, and subtitles/transcripts from YouTube and other sites through a lazy-loaded yt-dlp runner. Use when the user wants playlists, clips, transcripts, audio-only media, or rate-limit-safe downloads.
 ---
 
 # yt-dlp Agent
 
-Run `scripts/check-prereqs.sh`, then construct yt-dlp arguments and pass them to `scripts/run`. The runner acquires the official binary through `npx` on first use and checks yt-dlp's recommended nightly channel daily. A global yt-dlp installation is neither required nor used.
-
-When an extractor fails after an upstream site change, retry once with `scripts/run --refresh ...` before diagnosing further.
+Run `scripts/check-prereqs.sh`, then construct yt-dlp arguments and pass them to `scripts/run`. Only an actual invocation makes `npx` acquire or update the cache-local official stable binary; prerequisite checks do not download it. A global yt-dlp installation is neither required nor used.
 
 ## Quick Reference
 

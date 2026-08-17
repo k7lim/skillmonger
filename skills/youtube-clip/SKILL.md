@@ -77,7 +77,7 @@ If json3 parsing issues arise, see `references/json3-format.md` for the subtitle
 |-------|----------|
 | No captions on video | Report clearly; suggest alternative language or video |
 | Transcript fetch fails on captioned video | YouTube may block requests (geo/bot detection) even when `--subtitles-only` search found the video. Try 2-3 candidates; skip failures gracefully. |
-| Extractor breaks after a YouTube change | Run `../yt-dlp/scripts/run --refresh --version`, then retry once. |
+| Extractor breaks after a YouTube change | Run `../yt-dlp/scripts/run --version` to trigger the lazy stable update, then retry once. |
 | Cross-segment phrase match | Read `full_text` and search manually; substring match misses phrases spanning segments |
 | Heatmap null (new/low-view video) | Explorer works without it -- chapters and transcript still render |
 | Auto-captions lack punctuation | Merge logic uses timing gaps as primary boundary signal |

@@ -88,6 +88,7 @@
 |------|---------|-------------|-------------|
 | 2026-01-25 | 1.0.0 | Initial | Skill created with Reddit discussion learnings |
 | 2026-08-16 | 2.0.0 | Runtime | Replaced global/pip yt-dlp with npx bootstrap and daily nightly refresh |
+| 2026-08-16 | 2.1.0 | Runtime | Moved updates to lazy stable checks performed only on actual use |
 
 ---
 
