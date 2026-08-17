@@ -13,8 +13,9 @@ Run `scripts/check-prereqs.sh` and parse JSON output.
 
 | Missing  | Action                                       |
 |----------|----------------------------------------------|
-| python3  | `brew install python3` or system package mgr |
-| yt-dlp   | `pip install yt-dlp` (offer to run)          |
+| python3  | Install Python 3.10+ via system package mgr  |
+| npx      | Install Node.js 18+                          |
+| yt-dlp runner | Deploy sibling `yt-dlp`; no global install |
 | jq       | `brew install jq` (offer to run)             |
 
 If `ready: true`, proceed. Otherwise resolve missing items first.
@@ -69,6 +70,7 @@ Present 3-5 top videos with quality assessment. For batch queries, one pick per 
 
 - `--flat-playlist` does NOT return like_count, comment_count, chapters, or heatmap. Search gives a fast overview; deep-dive gives the full picture.
 - YouTube search is non-deterministic -- the same query returns different results across runs.
+- Extractor/integration failure: retry once with `../yt-dlp/scripts/run --refresh --version`, then rerun the search.
 - The sp filter codes may silently break if YouTube updates their protobuf schema. If filter results look wrong, re-verify codes against `references/sp-filters.md`.
 - Channel-specific search may require cookies for age-restricted or region-locked channels -- the scripts do not pass cookies.
 - Heatmap data is null for very new or low-view videos. The evaluate script skips the heatmap check when absent.

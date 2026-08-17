@@ -47,6 +47,22 @@
 
 ---
 
+### Runner Bootstrap Fails in npm Cache
+
+**Issue:** The user's default npm cache is unwritable or contains files owned by another user.
+
+**Resolution:** `scripts/run` sets `npm_config_cache` to its own cache-local directory. Preserve that isolation when changing the bootstrap command.
+
+---
+
+### Official Unix Binary Rejects Python
+
+**Issue:** The platform-independent binary reports that Python is unsupported even though `python3` exists.
+
+**Resolution:** yt-dlp requires Python 3.10+. The runner probes versioned executables and Homebrew Python instead of trusting the first `python3` on `PATH`.
+
+---
+
 ## Known Failure Patterns
 
 ### "Sign in to confirm you're not a bot"
@@ -71,6 +87,7 @@
 | Date | Version | Change Type | Description |
 |------|---------|-------------|-------------|
 | 2026-01-25 | 1.0.0 | Initial | Skill created with Reddit discussion learnings |
+| 2026-08-16 | 2.0.0 | Runtime | Replaced global/pip yt-dlp with npx bootstrap and daily nightly refresh |
 
 ---
 

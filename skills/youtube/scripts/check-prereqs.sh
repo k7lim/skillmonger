@@ -37,16 +37,18 @@ all_ok=true
 
 check_python3() {
   local name="python3"
-  if ! command -v python3 &>/dev/null; then
-    echo "check: python3 ... missing" >&2
-    checks+=("{\"name\":\"$name\",\"status\":\"missing\"}")
-    all_ok=false
-    return
-  fi
-  local version
-  version=$(python3 --version 2>&1 | awk '{print $2}')
-  echo "check: python3 ... ok ($version)" >&2
-  checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+  local candidate version
+  for candidate in python3 python3.14 python3.13 python3.12 python3.11 python3.10 /opt/homebrew/bin/python3; do
+    if command -v "$candidate" &>/dev/null && "$candidate" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' 2>/dev/null; then
+      version=$("$candidate" --version 2>&1 | awk '{print $2}')
+      echo "check: python3 ... ok ($version)" >&2
+      checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
+      return
+    fi
+  done
+  echo "check: python3 ... missing (3.10+ required)" >&2
+  checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"Python 3.10 or newer required\"}")
+  all_ok=false
 }
 
 check_jq() {
@@ -63,17 +65,17 @@ check_jq() {
   checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
 }
 
-check_yt_dlp() {
-  local name="yt-dlp"
-  if ! python3 -m yt_dlp --version &>/dev/null 2>&1; then
-    echo "check: yt-dlp ... missing" >&2
-    checks+=("{\"name\":\"$name\",\"status\":\"missing\"}")
+check_npx() {
+  local name="npx"
+  if ! command -v npx &>/dev/null; then
+    echo "check: npx ... missing" >&2
+    checks+=("{\"name\":\"$name\",\"status\":\"missing\",\"note\":\"install Node.js 18 or newer\"}")
     all_ok=false
     return
   fi
   local version
-  version=$(python3 -m yt_dlp --version 2>&1)
-  echo "check: yt-dlp ... ok ($version)" >&2
+  version=$(npx --version 2>&1)
+  echo "check: npx ... ok ($version)" >&2
   checks+=("{\"name\":\"$name\",\"status\":\"ok\",\"version\":\"$version\"}")
 }
 
@@ -108,10 +110,11 @@ check_sibling_skill() {
 # --- Run checks ---
 check_python3
 check_jq
-check_yt_dlp
+check_npx
 check_ffmpeg
 check_sibling_skill "youtube-search" "SKILL.md"
 check_sibling_skill "youtube-clip" "SKILL.md"
+check_sibling_skill "yt-dlp" "scripts/run"
 
 # --- Output JSON ---
 checks_json=""

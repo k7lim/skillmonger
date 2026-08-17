@@ -1,0 +1,70 @@
+#!/bin/bash
+# Bootstrap and run the recommended yt-dlp nightly without a global install.
+set -euo pipefail
+
+usage() {
+  cat <<'HELP'
+Usage: scripts/run [--refresh] [YT-DLP_ARGS...]
+
+Runs a cache-local yt-dlp nightly. The first run acquires the official binary
+through npx; later runs check for a nightly update once every 24 hours.
+
+  --refresh   Force a nightly update before running yt-dlp
+HELP
+}
+
+if [[ "${1:-}" == "--help-runner" ]]; then
+  usage
+  exit 0
+fi
+
+force_refresh=false
+if [[ "${1:-}" == "--refresh" ]]; then
+  force_refresh=true
+  shift
+fi
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "yt-dlp runner: npx is required (install Node.js 18 or newer)" >&2
+  exit 127
+fi
+
+cache_root="${YTDLP_RUNNER_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/skillmonger/yt-dlp}"
+binary="$cache_root/yt-dlp"
+refresh_marker="$cache_root/.nightly-refresh"
+npm_cache="$cache_root/npm"
+
+mkdir -p "$cache_root" "$npm_cache"
+
+if [[ ! -f "$binary" ]]; then
+  echo "yt-dlp runner: acquiring the official binary via npx" >&2
+  npm_config_cache="$npm_cache" npx --yes yt-dlp-dl@1.0.1 "$cache_root" >&2
+fi
+
+python_runtime=""
+for candidate in python3 python3.14 python3.13 python3.12 python3.11 python3.10 /opt/homebrew/bin/python3; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' 2>/dev/null; then
+    python_runtime="$(command -v "$candidate")"
+    break
+  fi
+done
+
+if [[ -z "$python_runtime" ]]; then
+  echo "yt-dlp runner: Python 3.10 or newer is required by yt-dlp" >&2
+  exit 127
+fi
+
+refresh_due=false
+if $force_refresh || [[ ! -f "$refresh_marker" ]]; then
+  refresh_due=true
+elif ! find "$refresh_marker" -mmin -1440 -print -quit 2>/dev/null | grep -q .; then
+  refresh_due=true
+fi
+
+if $refresh_due; then
+  echo "yt-dlp runner: checking the recommended nightly channel" >&2
+  "$python_runtime" "$binary" --update-to nightly >&2
+  touch "$refresh_marker"
+fi
+
+exec "$python_runtime" "$binary" "$@"

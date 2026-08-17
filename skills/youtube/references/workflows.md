@@ -28,7 +28,7 @@ Use case: "Find the best trailer for each of these movies and download them."
 
 4. **Download** (actuator):
    ```bash
-   python3 -m yt_dlp -t sleep -o "%(title)s.%(ext)s" "URL"
+   ../yt-dlp/scripts/run -t sleep -o "%(title)s.%(ext)s" "URL"
    ```
    Always use `-t sleep` for bulk. Use `--cookies-from-browser firefox` if rate-limited.
 
@@ -77,7 +77,7 @@ Use case: "Find good explainer videos, then identify clips for each sub-topic."
 
 8. **(Optional) Download clips** (actuator, if user requests):
    ```bash
-   python3 -m yt_dlp --download-sections "*3:45-5:12" --force-keyframes-at-cuts "URL"
+   ../yt-dlp/scripts/run --download-sections "*3:45-5:12" --force-keyframes-at-cuts "URL"
    ```
    Requires ffmpeg.
 

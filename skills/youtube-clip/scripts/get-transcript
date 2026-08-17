@@ -19,6 +19,10 @@ import argparse
 import subprocess
 import tempfile
 
+YTDLP_RUNNER = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "yt-dlp", "scripts", "run"
+))
+
 def extract_video_id(input_str):
     """Extract video ID from URL or return as-is if already an ID."""
     patterns = [
@@ -168,7 +172,7 @@ def main():
         lang_pattern = f"{args.lang}.*" if not args.lang.endswith("*") else args.lang
 
         cmd = [
-            "python3", "-m", "yt_dlp",
+            YTDLP_RUNNER,
             "--write-auto-subs", "--write-subs",
             "--sub-lang", lang_pattern,
             "--sub-format", "json3",
@@ -180,7 +184,7 @@ def main():
 
         # Also fetch video title
         info_cmd = [
-            "python3", "-m", "yt_dlp",
+            YTDLP_RUNNER,
             "--dump-json", "--no-download", "--no-warnings",
             f"https://www.youtube.com/watch?v={video_id}"
         ]

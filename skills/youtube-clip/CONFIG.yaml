@@ -2,9 +2,9 @@
 
 skill:
   name: youtube-clip
-  version: 0.1.0
+  version: 0.2.0
   created: 2026-04-19
-  updated: 2026-04-19
+  updated: 2026-08-16
   author: kevin
 
 description: >
@@ -42,7 +42,8 @@ dependencies:
   cli:
     - python3
     - jq
-  pip:
+    - npx
+  sibling_skills:
     - yt-dlp
   optional_pip:
     - yt-fts

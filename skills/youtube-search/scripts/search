@@ -376,8 +376,9 @@ def main():
             url += f"&sp={sp_parts[0]}"
 
     # Build yt-dlp command
+    ytdlp_runner = Path(__file__).resolve().parents[2] / "yt-dlp" / "scripts" / "run"
     cmd = [
-        "python3", "-m", "yt_dlp",
+        str(ytdlp_runner),
         url,
         "-J", "--flat-playlist",
         "--extractor-args", "youtubetab:approximate_date",
@@ -407,7 +408,7 @@ def main():
         envelope = build_envelope(False, [], {
             "source": "yt-dlp", "query": args.query,
             "filters": filters_applied,
-            "error": "python3 not found. Run scripts/check-prereqs.sh to verify dependencies.",
+            "error": "yt-dlp runner not found. Deploy the sibling yt-dlp skill and run scripts/check-prereqs.sh.",
             "latency_ms": latency
         })
         print(json.dumps(envelope, indent=2 if args.pretty else None))

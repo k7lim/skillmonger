@@ -20,6 +20,10 @@ import argparse
 import subprocess
 import html as html_lib
 
+YTDLP_RUNNER = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "yt-dlp", "scripts", "run"
+))
+
 def extract_video_id(input_str):
     patterns = [
         r'(?:v=|\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})',
@@ -64,7 +68,7 @@ def error_envelope(message, code=1):
 def get_video_metadata(video_id):
     """Fetch video metadata via yt-dlp --dump-json."""
     cmd = [
-        "python3", "-m", "yt_dlp",
+        YTDLP_RUNNER,
         "--dump-json", "--no-download", "--no-warnings",
         f"https://www.youtube.com/watch?v={video_id}"
     ]

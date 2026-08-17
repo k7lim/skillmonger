@@ -14,7 +14,7 @@ tags: sensor, actuator, commands
 | `scripts/get-transcript` | youtube-clip | **sensor** | none (temp files cleaned) |
 | `scripts/search-transcript` | youtube-clip | **sensor** | none |
 | `scripts/explore` | youtube-clip | **actuator** | writes HTML file |
-| `python3 -m yt_dlp` | yt-dlp | **actuator** | writes media files |
+| `../yt-dlp/scripts/run` (download arguments) | yt-dlp | **actuator** | writes media files |
 
 ## Rule
 

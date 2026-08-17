@@ -18,6 +18,7 @@ import subprocess
 import time
 import argparse
 import re
+from pathlib import Path
 
 SCHEMA_VERSION = "0.2.0"
 OUTPUT_FIELDS = [
@@ -217,8 +218,9 @@ def main():
 
     start = time.time()
 
+    ytdlp_runner = Path(__file__).resolve().parents[2] / "yt-dlp" / "scripts" / "run"
     cmd = [
-        "python3", "-m", "yt_dlp",
+        str(ytdlp_runner),
         "--dump-json", "--no-download",
         "--no-warnings",
         url,
@@ -230,7 +232,7 @@ def main():
         latency = int((time.time() - start) * 1000)
         envelope = build_envelope(False, {}, {
             "source": "yt-dlp", "video_id": video_id,
-            "error": "python3 not found. Run scripts/check-prereqs.sh to verify dependencies.",
+            "error": "yt-dlp runner not found. Deploy the sibling yt-dlp skill and run scripts/check-prereqs.sh.",
             "latency_ms": latency,
             "schema_version": 1
         })

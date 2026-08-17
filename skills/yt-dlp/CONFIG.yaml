@@ -2,9 +2,9 @@
 
 skill:
   name: yt-dlp
-  version: 1.0.0
+  version: 2.0.0
   created: 2026-01-25
-  updated: 2026-01-25
+  updated: 2026-08-16
   author: kevin
 
 triggers:
@@ -29,7 +29,9 @@ dependencies:
   tools:
     - Bash
   cli:
-    - yt-dlp
+    - npx
+    - python3
+  optional_cli:
     - ffmpeg
 
 loading:

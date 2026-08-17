@@ -1,11 +1,13 @@
 ---
 name: yt-dlp
-description: Download videos, audio, and subtitles/transcripts from YouTube and other sites using yt-dlp CLI. Use when user wants to download playlists, extract transcripts, get audio-only, or needs rate-limit-safe downloading.
+description: Download videos, audio, and subtitles/transcripts from YouTube and other sites through an auto-updating yt-dlp nightly runner. Use when the user wants playlists, clips, transcripts, audio-only media, or rate-limit-safe downloads.
 ---
 
 # yt-dlp Agent
 
-You are a yt-dlp CLI expert. Construct and execute yt-dlp commands for downloading media.
+Run `scripts/check-prereqs.sh`, then construct yt-dlp arguments and pass them to `scripts/run`. The runner acquires the official binary through `npx` on first use and checks yt-dlp's recommended nightly channel daily. A global yt-dlp installation is neither required nor used.
+
+When an extractor fails after an upstream site change, retry once with `scripts/run --refresh ...` before diagnosing further.
 
 ## Quick Reference
 
@@ -13,21 +15,21 @@ You are a yt-dlp CLI expert. Construct and execute yt-dlp commands for downloadi
 
 | Goal | Command |
 |------|---------|
-| Best video+audio | `yt-dlp URL` |
-| Audio only (mp3) | `yt-dlp -x --audio-format mp3 URL` |
-| Subtitles embedded | `yt-dlp --write-subs --sub-lang en --embed-subs URL` |
-| Auto-generated subs | `yt-dlp --write-auto-subs --sub-lang en URL` |
-| Rate-limit safe | `yt-dlp -t sleep URL` |
-| With cookies | `yt-dlp --cookies-from-browser firefox URL` |
+| Best video+audio | `scripts/run URL` |
+| Audio only (mp3) | `scripts/run -x --audio-format mp3 URL` |
+| Subtitles embedded | `scripts/run --write-subs --sub-lang en --embed-subs URL` |
+| Auto-generated subs | `scripts/run --write-auto-subs --sub-lang en URL` |
+| Rate-limit safe | `scripts/run -t sleep URL` |
+| With cookies | `scripts/run --cookies-from-browser firefox URL` |
 
 ### Playlist Downloads
 
 ```bash
 # Basic playlist with numbered files
-yt-dlp -o "%(playlist_index)s - %(title)s.%(ext)s" "PLAYLIST_URL"
+scripts/run -o "%(playlist_index)s - %(title)s.%(ext)s" "PLAYLIST_URL"
 
 # Skip already downloaded
-yt-dlp --download-archive archive.txt "PLAYLIST_URL"
+scripts/run --download-archive archive.txt "PLAYLIST_URL"
 ```
 
 ## Execution Workflow
@@ -45,7 +47,7 @@ Determine what user needs:
 For bulk downloads, **always use the sleep preset**:
 
 ```bash
-yt-dlp -t sleep URL
+scripts/run -t sleep URL
 ```
 
 This applies: `--sleep-subtitles 5 --sleep-requests 0.75 --sleep-interval 10 --max-sleep-interval 20`
@@ -53,7 +55,7 @@ This applies: `--sleep-subtitles 5 --sleep-requests 0.75 --sleep-interval 10 --m
 If hitting "Sign in to confirm you're not a bot":
 
 ```bash
-yt-dlp --cookies-from-browser firefox URL
+scripts/run --cookies-from-browser firefox URL
 ```
 
 ### Step 3: Construct Command
@@ -61,7 +63,7 @@ yt-dlp --cookies-from-browser firefox URL
 Build command progressively:
 
 ```bash
-yt-dlp \
+scripts/run \
   -t sleep \                                    # Rate limiting
   --cookies-from-browser firefox \              # If needed
   -o "%(playlist_index)s - %(title)s.%(ext)s" \ # Output template
@@ -78,7 +80,7 @@ Run with `--verbose` first on a single video to verify settings work.
 ### Full Playlist with Transcripts + Audio + Video
 
 ```bash
-yt-dlp -t sleep \
+scripts/run -t sleep \
   --cookies-from-browser firefox \
   -o "%(playlist_title)s/%(playlist_index)03d - %(title)s.%(ext)s" \
   --write-subs --write-auto-subs --sub-lang en \
@@ -89,7 +91,7 @@ yt-dlp -t sleep \
 ### Transcripts Only (no video download)
 
 ```bash
-yt-dlp --skip-download \
+scripts/run --skip-download \
   --write-subs --write-auto-subs --sub-lang en \
   --convert-subs srt \
   "URL"
@@ -98,7 +100,7 @@ yt-dlp --skip-download \
 ### Audio + Transcript for Analysis
 
 ```bash
-yt-dlp -t sleep \
+scripts/run -t sleep \
   -x --audio-format mp3 \
   --write-subs --write-auto-subs --sub-lang en \
   --convert-subs srt \
