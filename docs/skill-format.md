@@ -327,6 +327,26 @@ know, so these are added where they are known and omitted otherwise:
 | `gate` | bool | `true` when the trace came from a gate run rather than a real run. |
 | `fixture` | string | The fixture the gate run used. Only meaningful with `gate: true`. |
 
+Optional. Written only when known; every reader tolerates their absence, and
+`schema_version` stays 1 because nothing above changed meaning.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session` | string | Id of the session the run came from, for `pj` to resolve |
+| `checks` | object \| array | The evaluate script's `checks`, copied verbatim |
+| `gate` | bool | `true` when a gate run wrote the trace instead of a real run |
+| `fixture` | string | The fixture a gate run used |
+
+`scripts/log-feedback.sh` writes them: `--session ID`, `--gate`,
+`--fixture NAME`, and `--from-evaluate [file|-]`, which takes `outcome`,
+`note` and `checks` straight from an evaluate script's JSON and records the
+trace with `source: script`. An explicit `--outcome` or `--note` overrides the
+file. An evaluate script that emits no `outcome` is not scoring the run, so
+`--from-evaluate` exits 2 and points at the skill's self-assessment path
+instead of inventing a score. These flags are for in-repo use -- gate runs and
+manual logging; a deployed copy's epilogue still appends its own line
+(ADR 0002).
+
 **Harvest:** agents run the *deployed copy* of a skill, and its epilogue
 appends the trace there, not here — deployed copies cannot reach this repo
 (ADR 0002). `scripts/harvest-feedback.sh [skill]` unions every deployed copy's

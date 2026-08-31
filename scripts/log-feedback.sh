@@ -21,13 +21,23 @@ Options:
   --prompt TEXT     The prompt or task that was executed
   --note TEXT       Optional note about the outcome
   --source TYPE     Rating source: user (default), llm, or script
+  --session ID      Session the run came from (a pj-indexed transcript id)
+  --from-evaluate F Take outcome, note and checks from an evaluate script's
+                    JSON (a file, or - for stdin). Implies --source script.
+  --gate            Mark the trace as written by a gate run, not a real run
+  --fixture NAME    Fixture the gate run used
   --help            Show this help message
 
 Interactive mode: omit options to be prompted for each field.
 
+This is for in-repo use -- gate runs and manual logging. Agents run deployed
+copies that cannot reach this repo, so their epilogues append the trace to the
+deployed copy and harvest-feedback.sh brings it home (ADR 0002).
+
 Examples:
   $(basename "$0") centers-of-excellence --outcome 4 --prompt "find CoE for tulips" --source user
   $(basename "$0") yt-dlp                # interactive mode
+  skills/x/scripts/evaluate.sh out.md | $(basename "$0") x --from-evaluate - --prompt "..."
 EOF
 }
 
@@ -38,11 +48,23 @@ OUTCOME=""
 PROMPT_TEXT=""
 NOTE=""
 SOURCE="user"
+SESSION=""
+FIXTURE=""
+GATE=false
+CHECKS_JSON=""
+FROM_EVALUATE=""
+USE_EVALUATE=false
+# Which fields the caller set explicitly. An explicit flag overrides whatever
+# --from-evaluate read out of the evaluate script's JSON.
+OUTCOME_SET=false
+NOTE_SET=false
+SOURCE_SET=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --outcome)
       OUTCOME="$2"
+      OUTCOME_SET=true
       shift 2
       ;;
     --prompt)
@@ -51,11 +73,37 @@ while [[ $# -gt 0 ]]; do
       ;;
     --note)
       NOTE="$2"
+      NOTE_SET=true
       shift 2
       ;;
     --source)
       SOURCE="$2"
+      SOURCE_SET=true
       shift 2
+      ;;
+    --session)
+      SESSION="$2"
+      shift 2
+      ;;
+    --fixture)
+      FIXTURE="$2"
+      shift 2
+      ;;
+    --gate)
+      GATE=true
+      shift
+      ;;
+    --from-evaluate)
+      USE_EVALUATE=true
+      # The argument is optional and stdin is the default. Only "-" or an
+      # existing file is consumed, so `--from-evaluate my-skill` still names
+      # the skill rather than swallowing it.
+      FROM_EVALUATE="-"
+      if [ $# -gt 1 ] && { [ "$2" = "-" ] || [ -f "$2" ]; }; then
+        FROM_EVALUATE="$2"
+        shift
+      fi
+      shift
       ;;
     --help|-h)
       usage
@@ -93,6 +141,86 @@ if [ ! -d "$SKILL_DIR" ]; then
   exit 1
 fi
 
+# --- Evaluate output (--from-evaluate) ---
+#
+# The evaluate script is the deterministic bookend: it has already scored the
+# run and recorded which checks it ran. Copying its JSON into the trace keeps
+# the score and its evidence together instead of asking the caller to retype
+# them, which is what a gate run needs.
+
+if [ "$USE_EVALUATE" = true ]; then
+  if ! command -v python3 &> /dev/null; then
+    echo "Error: python3 is required to read evaluate output (--from-evaluate)." >&2
+    exit 1
+  fi
+
+  if [ "$FROM_EVALUATE" = "-" ]; then
+    EVAL_RAW=$(cat)
+  else
+    EVAL_RAW=$(cat "$FROM_EVALUATE")
+  fi
+
+  # Three lines out: the outcome, the note already JSON-escaped (so a
+  # multi-line note stays on one line), and the checks as compact JSON.
+  set +e
+  EVAL_FIELDS=$(EVAL_RAW="$EVAL_RAW" EVAL_SKILL="$SKILL_NAME" python3 -c '
+import json, os, sys
+
+raw = os.environ["EVAL_RAW"]
+skill = os.environ["EVAL_SKILL"]
+try:
+    data = json.loads(raw)
+except ValueError as exc:
+    sys.stderr.write("Error: evaluate output is not JSON (%s)\n" % exc)
+    sys.exit(1)
+if not isinstance(data, dict):
+    sys.stderr.write("Error: evaluate output is not a JSON object\n")
+    sys.exit(1)
+
+outcome = data.get("outcome")
+if outcome is None:
+    sys.stderr.write(
+        "Error: evaluate output carries no outcome; this evaluate script does not "
+        "score the run.\n"
+        "       Take the self-assessment path instead: read the After Execution "
+        "criteria in\n"
+        "       skills/%s/SKILL.md, score the run 1-5 yourself, and log that score:\n"
+        "         scripts/log-feedback.sh %s --outcome N --note ... --source llm\n"
+        % (skill, skill)
+    )
+    sys.exit(2)
+
+print(outcome if isinstance(outcome, int) else str(outcome).strip())
+print(json.dumps(data.get("note") or "", ensure_ascii=False)[1:-1])
+checks = data.get("checks")
+if checks is None or checks == {} or checks == []:
+    print("")
+else:
+    print(json.dumps(checks, ensure_ascii=False, separators=(",", ":")))
+')
+  EVAL_STATUS=$?
+  set -e
+  if [ "$EVAL_STATUS" -ne 0 ]; then
+    exit "$EVAL_STATUS"
+  fi
+
+  EVAL_OUTCOME=$(printf '%s\n' "$EVAL_FIELDS" | sed -n '1p')
+  EVAL_NOTE=$(printf '%s\n' "$EVAL_FIELDS" | sed -n '2p')
+  CHECKS_JSON=$(printf '%s\n' "$EVAL_FIELDS" | sed -n '3p')
+
+  if [ "$OUTCOME_SET" = false ]; then
+    OUTCOME="$EVAL_OUTCOME"
+  fi
+  if [ "$NOTE_SET" = false ]; then
+    # Already JSON-escaped by python, so json_escape must not run on it again.
+    ESCAPED_EVAL_NOTE="$EVAL_NOTE"
+    NOTE_SET=true
+  fi
+  if [ "$SOURCE_SET" = false ]; then
+    SOURCE="script"
+  fi
+fi
+
 # --- Interactive Mode (fill missing fields) ---
 
 if [ -z "$OUTCOME" ]; then
@@ -121,7 +249,7 @@ if [ -z "$PROMPT_TEXT" ]; then
   read -rp "Prompt/task (what was executed): " PROMPT_TEXT
 fi
 
-if [ -z "$NOTE" ]; then
+if [ "$NOTE_SET" = false ] && [ -z "$NOTE" ]; then
   read -rp "Note (optional, press enter to skip): " NOTE
 fi
 
@@ -163,9 +291,30 @@ json_escape() {
 }
 
 ESCAPED_PROMPT=$(json_escape "$PROMPT_TEXT")
-ESCAPED_NOTE=$(json_escape "$NOTE")
+if [ -n "${ESCAPED_EVAL_NOTE+set}" ]; then
+  ESCAPED_NOTE="$ESCAPED_EVAL_NOTE"
+else
+  ESCAPED_NOTE=$(json_escape "$NOTE")
+fi
 
-JSON_LINE="{\"ts\":\"$TIMESTAMP\",\"skill\":\"$SKILL_NAME\",\"version\":\"$VERSION\",\"prompt\":\"$ESCAPED_PROMPT\",\"outcome\":$OUTCOME,\"note\":\"$ESCAPED_NOTE\",\"source\":\"$SOURCE\",\"schema_version\":1}"
+# Optional fields are written only when set, so a plain manual entry is the
+# line it has always been. Readers tolerate extra fields; schema_version
+# stays 1.
+OPTIONAL_FIELDS=""
+if [ -n "$SESSION" ]; then
+  OPTIONAL_FIELDS="$OPTIONAL_FIELDS,\"session\":\"$(json_escape "$SESSION")\""
+fi
+if [ -n "$CHECKS_JSON" ]; then
+  OPTIONAL_FIELDS="$OPTIONAL_FIELDS,\"checks\":$CHECKS_JSON"
+fi
+if [ "$GATE" = true ]; then
+  OPTIONAL_FIELDS="$OPTIONAL_FIELDS,\"gate\":true"
+fi
+if [ -n "$FIXTURE" ]; then
+  OPTIONAL_FIELDS="$OPTIONAL_FIELDS,\"fixture\":\"$(json_escape "$FIXTURE")\""
+fi
+
+JSON_LINE="{\"ts\":\"$TIMESTAMP\",\"skill\":\"$SKILL_NAME\",\"version\":\"$VERSION\",\"prompt\":\"$ESCAPED_PROMPT\",\"outcome\":$OUTCOME,\"note\":\"$ESCAPED_NOTE\",\"source\":\"$SOURCE\"$OPTIONAL_FIELDS,\"schema_version\":1}"
 
 # --- Append to FEEDBACK.jsonl ---
 
