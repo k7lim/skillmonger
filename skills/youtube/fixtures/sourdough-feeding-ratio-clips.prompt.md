@@ -1,0 +1,1 @@
+Curate YouTube videos on keeping a sourdough starter alive — captioned, from bakers with a track record — inspect the top candidates, then pull the clips where they explain feeding ratios and timing. Log each command as you go so I can follow along; I only want timestamps and watch links, nothing saved to disk.

@@ -1,0 +1,1 @@
+YouTube research: find captioned conference talks on Kubernetes networking (CNI plugins, kube-proxy vs eBPF), deep-dive the strongest three, then find where each one explains why kube-proxy's iptables mode stops scaling and give me timestamps. Show every command you run, and stop for my pick before doing anything beyond transcript search.

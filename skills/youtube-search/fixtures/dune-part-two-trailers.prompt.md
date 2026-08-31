@@ -1,0 +1,1 @@
+Find the official Dune: Part Two trailers — Warner Bros.' own uploads, not fan re-cuts — rank them, and deep-dive the strongest one. I am piping your reply into scripts/evaluate, so reply with only the raw deep-dive JSON envelope of your top pick, nothing else.

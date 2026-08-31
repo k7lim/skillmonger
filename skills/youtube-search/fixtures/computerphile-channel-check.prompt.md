@@ -1,0 +1,1 @@
+Is Computerphile (https://www.youtube.com/@Computerphile) still worth following? Pull its five most-viewed videos on core computer science topics and judge the channel by them. Your whole reply goes straight into scripts/evaluate, so make it the raw JSON envelope from that channel search and nothing else — no commentary around it.
