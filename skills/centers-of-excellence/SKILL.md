@@ -131,18 +131,27 @@ Total: 100%
 
 ## After Execution
 
-After completing the skill output, log feedback to track quality over time.
+Run this skill's evaluator on the output you just produced:
 
-**Priority cascade:**
-1. If `scripts/evaluate.sh` exists in this skill directory, run it and use the JSON result
-2. Otherwise, self-assess using the scale below
-
-**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
-
-**To log feedback**, append one JSON line to `FEEDBACK.jsonl` in this skill directory:
-
-```json
-{"ts":"<UTC ISO 8601>","skill":"centers-of-excellence","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+```bash
+scripts/evaluate.sh   # takes the output on stdin, or as its first argument
 ```
 
-Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+Copy its `outcome`, `note` and `checks` straight through — do not re-score
+them yourself.
+
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"centers-of-excellence","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+If the evaluator cannot run, say why in `note`, score the run yourself on the
+standard scale (1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent), and set
+`"source":"llm"`.
