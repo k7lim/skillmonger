@@ -1,9 +1,53 @@
 #!/bin/bash
-# pre-push hook - Validates all skills before pushing
+# pre-push hook - Validates every skill, then gates the ones whose SKILL.md
+# changed in the commits being pushed.
 # Part of the Iterative Skills Framework
+#
+# Validation runs first, over every skill under skills/ (unchanged). If it
+# fails, the push is blocked before the gate step ever runs.
+#
+# The gate step reads pre-push's own stdin protocol (man githooks, PRE-PUSH):
+# one line per ref being updated,
+#   <local ref> <local sha> <remote ref> <remote sha>
+# A remote sha of 40 zeros means a new branch: diffed against the merge-base
+# with the remote's default branch when that's known
+# (refs/remotes/<remote>/HEAD), else against every commit not already on any
+# remote-tracking ref (`git rev-list <local sha> --not --remotes`). A local
+# sha of 40 zeros means a delete and is skipped entirely. Multiple lines
+# (pushing several refs in one go) are all handled; a skill is gated at most
+# once per push no matter how many lines or commits touch it.
+#
+# For every skills/<name>/SKILL.md added or modified (deletes don't count,
+# neither do changes to any other file) among those commits, whose
+# CONFIG.yaml evaluation.mode is programmatic or hybrid, this runs
+# scripts/gate-skill.sh once per skill. SKILLMONGER_GATE_CMD overrides the
+# command (default scripts/gate-skill.sh; tests point it at a stub so no
+# model ever runs). Qualitative, delayed and format-1 skills (no
+# evaluation.mode) never trigger the gate.
+#
+# gate-skill.sh's own exit codes, and what this hook does with each:
+#   0   pass                                -> push proceeds
+#   1   regression                          -> BLOCKS; relays the gate's own
+#                                               output, which includes the
+#                                               revert line
+#   3   not gateable: fewer than 3           -> BLOCKS; relays the gate's own
+#       fixtures/<case>.prompt.md files        message, which names the
+#                                               fixture layout (fixtures are
+#                                               required at the first gated
+#                                               edit, no grace window - 0.6)
+#   3   not gateable: any other refusal      -> reported, does NOT block;
+#       (e.g. script_emits_outcome: false)     there is nothing the author
+#                                               can add to make that skill
+#                                               gateable
+#   anything else                            -> BLOCKS; the hook could not
+#                                               tell whether the edit is safe
+#
+# SKILLMONGER_SKIP_GATE=1 skips the whole gate step, printing a warning that
+# names the skills it would have gated. The validation loop above still runs.
+set -euo pipefail
 
 # Find project root (where .git is)
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || true
 if [ -z "$PROJECT_ROOT" ]; then
   exit 0  # Not in a git repo, skip
 fi
@@ -35,11 +79,11 @@ for skill_dir in "$SKILLS_DIR"/*/; do
 
     if "$VALIDATE_SCRIPT" "$skill_dir" > /dev/null 2>&1; then
       echo "  ✓ $skill_name passed"
-      ((validated++))
+      validated=$((validated + 1))
     else
       echo "  ✗ $skill_name FAILED"
       # Show errors
-      "$VALIDATE_SCRIPT" "$skill_dir" 2>&1 | grep -E "^ERROR:" | sed 's/^/    /'
+      "$VALIDATE_SCRIPT" "$skill_dir" 2>&1 | grep -E "^ERROR:" | sed 's/^/    /' || true
       failed=1
     fi
     echo ""
@@ -59,4 +103,173 @@ if [ $failed -eq 1 ]; then
 fi
 
 echo "✓ Pre-push check passed ($validated skill(s) validated)"
+
+# --- Gate: run the regression gate for programmatic/hybrid skills whose ----
+# --- SKILL.md changed in the commits being pushed. See the header above ----
+# --- for the exit-code table and the SKILLMONGER_* overrides. --------------
+
+REMOTE_NAME="${1:-origin}"
+GATE_CMD="${SKILLMONGER_GATE_CMD:-$PROJECT_ROOT/scripts/gate-skill.sh}"
+ZERO_SHA_RE='^0+$'
+
+# Mirrors validate-skill.sh's read_config_value: PyYAML first, sed fallback.
+# Kept in sync by hand; do not add a third YAML reader.
+read_config_value() {
+  local config="$1" path="$2"
+  if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
+    python3 - "$config" "$path" <<'PY' 2>/dev/null || true
+import sys, yaml
+try:
+    node = yaml.safe_load(open(sys.argv[1])) or {}
+except Exception:
+    sys.exit(0)
+for part in sys.argv[2].split("."):
+    if not isinstance(node, dict):
+        sys.exit(0)
+    node = node.get(part)
+if node is None:
+    sys.exit(0)
+print("true" if node is True else "false" if node is False else node)
+PY
+  else
+    local top="${path%%.*}" key="${path#*.}"
+    sed -n "/^${top}:/,/^[^[:space:]#]/p" "$config" \
+      | sed -n "s/^[[:space:]]\{1,\}${key}:[[:space:]]*\([^[:space:]#]*\).*/\1/p" \
+      | head -1 | tr -d "\"'"
+  fi
+}
+
+# --- Which commits are being pushed, per pre-push's stdin protocol --------
+
+ALL_COMMITS=""
+while read -r local_ref local_sha remote_ref remote_sha || [ -n "${local_ref:-}" ]; do
+  [ -n "${local_ref:-}" ] || continue
+
+  if [[ "$local_sha" =~ $ZERO_SHA_RE ]]; then
+    continue  # delete: nothing being pushed
+  fi
+
+  commits=""
+  if [[ "$remote_sha" =~ $ZERO_SHA_RE ]]; then
+    # New branch. Prefer the merge-base with the remote's known default
+    # branch; otherwise every commit not already on any remote-tracking ref.
+    default_ref="$(git symbolic-ref -q "refs/remotes/$REMOTE_NAME/HEAD" 2>/dev/null)" || true
+    default_branch="${default_ref#refs/remotes/$REMOTE_NAME/}"
+    merge_base=""
+    if [ -n "$default_branch" ] && [ "$default_branch" != "$default_ref" ] \
+       && git rev-parse -q --verify "refs/remotes/$REMOTE_NAME/$default_branch" >/dev/null 2>&1; then
+      merge_base="$(git merge-base "$local_sha" "refs/remotes/$REMOTE_NAME/$default_branch" 2>/dev/null)" || true
+    fi
+    if [ -n "$merge_base" ]; then
+      commits="$(git rev-list "$merge_base..$local_sha" 2>/dev/null)" || true
+    else
+      commits="$(git rev-list "$local_sha" --not --remotes 2>/dev/null)" || true
+    fi
+  else
+    commits="$(git rev-list "$remote_sha..$local_sha" 2>/dev/null)" || true
+  fi
+
+  ALL_COMMITS="$ALL_COMMITS
+$commits"
+done
+ALL_COMMITS="$(printf '%s\n' "$ALL_COMMITS" | sed '/^$/d' | sort -u)"
+
+# --- Which skills' SKILL.md was added or modified in those commits --------
+
+CANDIDATE_SKILLS=""
+for commit in $ALL_COMMITS; do
+  while IFS=$'\t' read -r status path; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      A|M)
+        if [[ "$path" =~ ^skills/([^/]+)/SKILL\.md$ ]]; then
+          CANDIDATE_SKILLS="$CANDIDATE_SKILLS
+${BASH_REMATCH[1]}"
+        fi
+        ;;
+    esac
+  done < <(git diff-tree -r --root --no-commit-id --name-status "$commit" 2>/dev/null || true)
+done
+CANDIDATE_SKILLS="$(printf '%s\n' "$CANDIDATE_SKILLS" | sed '/^$/d' | sort -u)"
+
+if [ -z "$CANDIDATE_SKILLS" ]; then
+  exit 0
+fi
+
+# --- Filter to programmatic/hybrid: the only modes the gate ever runs -----
+
+GATEABLE_SKILLS=""
+while IFS= read -r skill_name; do
+  [ -n "$skill_name" ] || continue
+  config="$SKILLS_DIR/$skill_name/CONFIG.yaml"
+  mode=""
+  if [ -f "$config" ]; then
+    mode="$(read_config_value "$config" evaluation.mode | head -1 | xargs)" || true
+  fi
+  case "$mode" in
+    programmatic|hybrid)
+      GATEABLE_SKILLS="$GATEABLE_SKILLS
+$skill_name"
+      ;;
+  esac
+done <<< "$CANDIDATE_SKILLS"
+GATEABLE_SKILLS="$(printf '%s\n' "$GATEABLE_SKILLS" | sed '/^$/d' | sort -u)"
+
+if [ -z "$GATEABLE_SKILLS" ]; then
+  exit 0
+fi
+
+if [ -n "${SKILLMONGER_SKIP_GATE:-}" ]; then
+  echo ""
+  echo "Warning: SKILLMONGER_SKIP_GATE set; skipping the gate for: $(printf '%s' "$GATEABLE_SKILLS" | tr '\n' ' ')"
+  exit 0
+fi
+
+echo ""
+echo "Pre-push: Gating changed skills..."
+echo ""
+
+gate_blocked=0
+while IFS= read -r skill_name; do
+  [ -n "$skill_name" ] || continue
+  echo "Gating: $skill_name"
+
+  gate_rc=0
+  gate_out="$("$GATE_CMD" "$SKILLS_DIR/$skill_name/" 2>&1)" || gate_rc=$?
+
+  case "$gate_rc" in
+    0)
+      echo "  ✓ gate passed"
+      ;;
+    1)
+      printf '%s\n' "$gate_out" | sed 's/^/  /'
+      echo "  ✗ $skill_name: gate regression, push blocked"
+      gate_blocked=1
+      ;;
+    3)
+      if printf '%s' "$gate_out" | grep -q "fixture(s); the gate needs at least"; then
+        printf '%s\n' "$gate_out" | sed 's/^/  /'
+        echo "  ✗ $skill_name: missing fixtures, push blocked"
+        gate_blocked=1
+      else
+        printf '%s\n' "$gate_out" | sed 's/^/  /'
+        echo "  ⚠ $skill_name: not gateable for another reason, not blocking"
+      fi
+      ;;
+    *)
+      printf '%s\n' "$gate_out" | sed 's/^/  /'
+      echo "  ✗ $skill_name: gate exited $gate_rc (unexpected), push blocked"
+      gate_blocked=1
+      ;;
+  esac
+  echo ""
+done <<< "$GATEABLE_SKILLS"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if [ "$gate_blocked" -eq 1 ]; then
+  echo "✗ Pre-push gate FAILED"
+  exit 1
+fi
+
+echo "✓ Pre-push gate passed"
 exit 0

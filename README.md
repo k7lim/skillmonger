@@ -194,9 +194,18 @@ alone, runs every prompt in the skill's `fixtures/` through it, scores each with
 the evaluate script, and compares against the same fixtures at the previous
 version. Any fixture more than a point below its baseline, or a mean drop past
 `evaluation.tolerance`, is a regression: it prints a revert line and reverts
-nothing itself. The pre-push hook runs the gate on a pushed edit to a scored
-skill; `SKILLMONGER_SKIP_GATE=1` bypasses it. Skills judged by a person are
-never gated.
+nothing itself. Skills judged by a person are never gated.
+
+`hooks/pre-push` runs the gate on every `skills/<name>/SKILL.md` a push adds
+or modifies whose `evaluation.mode` is `programmatic` or `hybrid`, once per
+skill no matter how many commits touch it. A regression blocks the push and
+relays the revert line; a skill with fewer than three fixtures also blocks,
+naming the `fixtures/<case>.prompt.md` layout it needs (fixtures are required
+starting at a skill's first gated edit, no grace window). Any other reason a
+skill can't be gated (for example `script_emits_outcome: false`) is reported
+but does not block — there's nothing the author could add to fix it.
+`SKILLMONGER_SKIP_GATE=1` skips the gate step entirely, printing a warning
+that names the skills it skipped.
 
 ## Scripts Reference
 
