@@ -4,27 +4,24 @@
 # Local: copies skill into project tool directories
 set -euo pipefail
 
-SKILLMONGER_DIR="$HOME/.local/share/skillmonger/skills"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Tool directory mappings
-# Format: tool:global_path:local_path:global_mode
-TOOL_PATHS=(
-  "claude:$HOME/.claude/skills:.claude/skills:symlink"
-  "codex:$HOME/.codex/skills:.codex/skills:symlink"
-  "opencode:$HOME/.config/opencode/skills:.opencode/skills:symlink"
-  "pi:$HOME/.pi/agent/skills:.pi/skills:copy"
-)
+# SKILLMONGER_DIR, TOOL_PATHS, YOLOBOX_SANDBOX_HOME and SANDBOX_TOOL_PATHS.
+# harvest-feedback.sh reads the same file, so the harvester always knows every
+# target this script is about to overwrite.
+# shellcheck source=lib/deploy-targets.sh
+. "$SCRIPT_DIR/lib/deploy-targets.sh"
 
-# Protected workspaces run every agent under one redirected HOME (the sandbox
-# home, see yolobox-pattern example/seed-sandbox-home.sh). Skills must be
-# copied there because the sandbox denies the shared ~/.local store that backs
-# the host symlinks. The pre-2026-08-25 per-tool homes (~/.claude-yolobox,
-# ~/.codex-yolobox) are retired.
-YOLOBOX_SANDBOX_HOME="${YOLOBOX_SANDBOX_HOME:-$HOME/.local/share/yolobox/home}"
-SANDBOX_TOOL_PATHS=(
-  "claude:$YOLOBOX_SANDBOX_HOME/.claude/skills"
-  "codex:$YOLOBOX_SANDBOX_HOME/.codex/skills"
-)
+# Deploying replaces a deployed copy wholesale, and the deployed copy is where
+# agents write their traces (ADR 0002). Harvest first, or rm -rf destroys them.
+harvest_before_removal() {
+  if ! "$SCRIPT_DIR/harvest-feedback.sh" "$SKILL_NAME" --quiet "$@"; then
+    echo "ERROR: Harvest failed for $SKILL_NAME. Refusing to deploy: the" >&2
+    echo "       deployed copies hold traces that deploy would destroy." >&2
+    exit 1
+  fi
+}
 
 # Parse arguments
 SKILL_DIR=""
@@ -107,8 +104,6 @@ fi
 
 SKILL_DIR="$(cd "$SKILL_DIR" && pwd)"
 SKILL_NAME="$(basename "$SKILL_DIR")"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Default to all tools if not specified
 if [ -z "$TOOLS" ]; then
@@ -188,6 +183,11 @@ fi
 
 # Global deployment (--global or --store-only)
 if [ -n "$DO_GLOBAL" ] || [ -n "$STORE_ONLY" ]; then
+  # Every global target below is about to be rm -rf'd; collect their traces
+  # first. One call covers them all: the harvester reads every target before
+  # anything is removed.
+  harvest_before_removal
+
   # Install to skillmonger directory
   mkdir -p "$SKILLMONGER_DIR"
   rm -rf "${SKILLMONGER_DIR:?}/$SKILL_NAME"
@@ -234,6 +234,20 @@ fi
 # Local deployment (copy)
 if [ -n "$LOCAL_DIR" ]; then
   LOCAL_DIR="$(cd "$LOCAL_DIR" && pwd)"
+
+  # The project's own copies are deploy targets too, and the harvester cannot
+  # guess where a project lives, so name them explicitly before removing them.
+  LOCAL_TARGETS=()
+  for entry in "${TOOL_PATHS[@]}"; do
+    IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
+    if tool_enabled "$tool" && [ -d "$LOCAL_DIR/$local_path" ]; then
+      LOCAL_TARGETS+=(--target "$LOCAL_DIR/$local_path")
+    fi
+  done
+  if [ ${#LOCAL_TARGETS[@]} -gt 0 ]; then
+    harvest_before_removal "${LOCAL_TARGETS[@]}"
+  fi
+
   echo ""
   for entry in "${TOOL_PATHS[@]}"; do
     IFS=':' read -r tool global_path local_path global_mode <<< "$entry"

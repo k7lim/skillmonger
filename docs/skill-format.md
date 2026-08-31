@@ -156,6 +156,18 @@ Append-only log of execution outcomes. One JSON object per line.
 | `source` | string | `script` (deterministic), `llm` (self-assessment), or `user` (manual) |
 | `schema_version` | int | Always 1 (for future compatibility) |
 
+**Harvest:** agents run the *deployed copy* of a skill, and its epilogue
+appends the trace there, not here — deployed copies cannot reach this repo
+(ADR 0002). `scripts/harvest-feedback.sh [skill]` unions every deployed copy's
+FEEDBACK.jsonl into `skills/<name>/FEEDBACK.jsonl`: existing lines are never
+rewritten, new ones are appended in timestamp order, `source` is normalised
+(`self` -> `llm`, `hybrid` -> `script` when the trace carries `checks` else
+`llm`, missing -> `llm`), `version` is left as written, and unparseable lines
+are skipped with a warning. It is idempotent, and `deploy-skill.sh` runs it
+before it removes a deployed copy. Harvest also derives
+`compaction.iteration_count` from the traces since `last_compaction`, so
+nothing has to increment it by hand.
+
 **Source reliability:** `script` > `user` > `llm`. Script ratings are ground truth. LLM ratings bias toward 4-5 but relative trends across versions are valid. User ratings are authoritative overrides.
 
 **Feedback patterns:** Not all skills can be scored the same way. Choose the pattern that fits:

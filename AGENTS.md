@@ -44,10 +44,11 @@ vendor/              # External repos (gitignored content, don't edit)
 | `skill` | Show current skill status and next step | `~/.skillmonger-state` |
 | `ship-skill.sh` | Promote sandbox skill to `skills/` | `validate-skill.sh` |
 | `validate-skill.sh` | Check structure and frontmatter | nothing |
-| `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh` |
+| `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
 | `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml |
+| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py` |
 | `analyze-feedback.sh` | Summarize feedback trends | skill FEEDBACK.jsonl files |
 | `compact-memo.sh` | Guide MEMO.md compaction | skill's CONFIG.yaml, FEEDBACK.jsonl |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
@@ -62,7 +63,10 @@ vendor/              # External repos (gitignored content, don't edit)
 - `~/.claude-yolobox/skills/`, `~/.codex-yolobox/skills/` — Deployed copies for SRT agents. Re-deploy from `skills/` to update.
 - `~/.pi/agent/skills/` — Deployed copies for Pi on both host and SRT. Re-deploy from `skills/` to update.
 - `skills/remotion/references/` — Sourced from upstream remotion-dev/remotion.
-- `FEEDBACK.jsonl` files — Append-only. Use `log-feedback.sh` to add entries.
+- `FEEDBACK.jsonl` files — Append-only. Use `log-feedback.sh` to add entries in
+  the repo; `harvest-feedback.sh` appends the ones agents wrote into deployed
+  copies. A deployed copy's FEEDBACK.jsonl is the one file agents are meant to
+  write to (ADR 0002); everything else under a deploy target is still off limits.
 
 ## Validation Constraints
 
