@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-input="$(cat)"
+# Read input from file arg or stdin (the evaluate contract in AGENTS.md)
+if [ $# -ge 1 ] && [ -f "$1" ]; then
+  input="$(cat "$1")"
+else
+  input="$(cat)"
+fi
 lower="$(printf '%s' "$input" | tr '[:upper:]' '[:lower:]')"
 
 score=1
