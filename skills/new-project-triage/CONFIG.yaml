@@ -48,7 +48,7 @@ loading:
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 23
+  iteration_count: 25
 
 budget:
   metadata_max: 100

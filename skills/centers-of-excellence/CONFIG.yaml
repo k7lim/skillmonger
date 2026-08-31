@@ -54,7 +54,7 @@ loading:
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 47
+  iteration_count: 48
 
 # Context budget guidance (tokens)
 budget:
