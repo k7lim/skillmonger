@@ -75,7 +75,7 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-If the score is below 4, fix the issues and re-run until the score is 4 or better.
+If the score is below 4, record that score as a trace first — a failing trace is what tells compaction this skill needs work — then fix the issues and re-run; the re-run gets its own trace.
 
 On alternate runs, ask: "Would you send this feedback to the student as-is?" Map: Yes=5, With minor edits=4, Needs work=3, No=2. On the runs in between, self-assess against the rules table above.
 
