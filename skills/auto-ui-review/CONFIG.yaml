@@ -1,0 +1,41 @@
+# Configuration for auto-ui-review
+
+skill:
+  name: auto-ui-review
+  format: 2
+  version: 0.1.0
+  created: 2026-08-31
+  updated: 2026-08-31
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
+
+triggers:
+  phrases:
+    - "review this page's UX"
+    - "run a UI review on the site"
+    - "accessibility audit of this URL"
+    - "how does the landing page look"
+    - "is this page ready to ship"
+    - "screenshot review of the deployed site"
+    - "check the page's AI crawlability"
+    - "review the copy on this page"
+  keywords:
+    - ux-review
+    - accessibility
+    - screenshot
+    - geo
+    - copy
+
+dependencies:
+  tools: []
+  cli:
+    - uv
+    - curl
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0

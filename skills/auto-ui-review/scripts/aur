@@ -1,0 +1,32 @@
+#!/bin/sh
+# aur -- run the auto-ui-review CLI from anywhere, in or out of the sandbox.
+#
+# Resolves the project checkout and execs the CLI through uv. Inside a nono
+# protected workspace HOME is redirected, so the real home is recovered from
+# the .yolobox-sandbox-home marker; the CLI itself then forwards the review
+# to the host service on http://127.0.0.2:9334 (no browser in the jail).
+#
+#   scripts/aur review --request request.json --format html -o report.html
+#   scripts/aur review https://example.com --reviewers headless --dry-run
+#   AUR_PROJECT=/path/to/checkout scripts/aur review ...
+set -eu
+
+real_home=$HOME
+if [ -r "$HOME/.yolobox-sandbox-home" ]; then
+  _m=$(/bin/cat "$HOME/.yolobox-sandbox-home" 2>/dev/null || true)
+  case "$_m" in /*) real_home=$_m ;; esac
+fi
+
+PROJECT=${AUR_PROJECT:-$real_home/Development/sandbox/projects/auto-ui-review}
+
+if [ ! -f "$PROJECT/pyproject.toml" ]; then
+  echo "aur: no auto-ui-review checkout at $PROJECT (set AUR_PROJECT)" >&2
+  echo "aur: get it with: git clone <auto-ui-review repo> && uv sync" >&2
+  echo "aur: inside a protected workspace you can instead POST the request JSON:" >&2
+  echo "aur:   curl -s -X POST http://127.0.0.2:9334/review -d @request.json" >&2
+  exit 69
+fi
+
+command -v uv >/dev/null 2>&1 || { echo "aur: uv not found on PATH" >&2; exit 69; }
+
+exec uv run --project "$PROJECT" auto-ui-review "$@"
