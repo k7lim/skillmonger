@@ -16,6 +16,9 @@ STAGING_ROOT="$(dirname "$SKILLS_DIR")/.skill-staging"
 BACKUP_ROOT="$(dirname "$SKILLS_DIR")/.skill-backups"
 TODAY=$(date +%Y-%m-%d)
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") <sandbox-skill-path> [options]
@@ -161,6 +164,7 @@ SANDBOX_PATH="$(cd "$SANDBOX_PATH" 2>/dev/null && pwd)" || {
 }
 
 SKILL_NAME="$(basename "$SANDBOX_PATH")"
+skill_name_require "$SKILL_NAME"
 TARGET_DIR="$SKILLS_DIR/$SKILL_NAME"
 
 echo "Promoting skill: $SKILL_NAME"

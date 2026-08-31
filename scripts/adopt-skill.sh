@@ -12,6 +12,9 @@ VENDOR_DIR="$PROJECT_ROOT/vendor"
 SANDBOX_DIR="${SKILLMONGER_SANDBOX:-$HOME/Development/sandbox/skills}"
 TODAY=$(date +%Y-%m-%d)
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") <repo-url> <upstream-skill-path> [options]
@@ -59,6 +62,7 @@ fi
 
 UPSTREAM_PATH="${UPSTREAM_PATH%/}"
 [ -n "$NAME" ] || NAME="$(basename "$UPSTREAM_PATH")"
+skill_name_require "$NAME"
 
 # Normalise repo to owner/repo plus a full URL.
 SLUG="$REPO"

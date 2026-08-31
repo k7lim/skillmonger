@@ -14,6 +14,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") <skill> [options]
@@ -47,6 +50,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$SKILL" ] || { usage >&2; exit 1; }
+skill_name_require "$SKILL"
 SKILL_DIR="$PROJECT_ROOT/skills/$SKILL"
 [ -d "$SKILL_DIR" ] || { echo "ERROR: no such skill: $SKILL" >&2; exit 1; }
 

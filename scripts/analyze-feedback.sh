@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_DIR="$PROJECT_ROOT/skills"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") [options]
@@ -41,6 +44,7 @@ RUN_HARVEST=true
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skill)
+      skill_name_require "$2"
       FILTER_SKILL="$2"
       shift 2
       ;;
@@ -56,6 +60,7 @@ while [[ $# -gt 0 ]]; do
       IMPACT_MODE=true
       # The skill name is optional; without one, every skill with traces.
       if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then
+        skill_name_require "$2"
         FILTER_SKILL="$2"
         shift
       fi

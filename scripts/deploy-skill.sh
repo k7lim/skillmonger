@@ -16,6 +16,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # target this script is about to overwrite.
 # shellcheck source=lib/deploy-targets.sh
 . "$SCRIPT_DIR/lib/deploy-targets.sh"
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
 
 # One planned action per line. Only --dry-run prints these.
 plan() {
@@ -147,8 +149,12 @@ if [ -z "$DO_GLOBAL" ] && [ -z "$STORE_ONLY" ] && [ -z "$LOCAL_DIR" ]; then
   exit 1
 fi
 
+# The last path component becomes the name every target is written under,
+# so it is checked before the path is even entered.
+skill_name_require "$(skill_name_from_path "$SKILL_DIR")"
 SKILL_DIR="$(cd "$SKILL_DIR" && pwd)"
 SKILL_NAME="$(basename "$SKILL_DIR")"
+skill_name_require "$SKILL_NAME"
 
 # Default to all tools if not specified
 if [ -z "$TOOLS" ]; then

@@ -18,6 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") <skill-dir> [options]
@@ -81,6 +84,7 @@ if [ ! -d "$SKILL_DIR" ]; then
 fi
 SKILL_DIR="$(cd "$SKILL_DIR" && pwd)"
 SKILL_NAME="$(basename "$SKILL_DIR")"
+skill_name_require "$SKILL_NAME"
 
 MEMO_FILE="$SKILL_DIR/MEMO.md"
 

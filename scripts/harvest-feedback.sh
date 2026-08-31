@@ -28,6 +28,8 @@ SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
 # next deploy destroys.
 # shellcheck source=lib/deploy-targets.sh
 . "$SCRIPT_DIR/lib/deploy-targets.sh"
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
 
 usage() {
   cat << EOF
@@ -79,6 +81,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       if [ -z "$SKILL_NAME" ]; then
+        skill_name_require "$1"
         SKILL_NAME="$1"
       else
         echo "Error: Unexpected argument $1" >&2

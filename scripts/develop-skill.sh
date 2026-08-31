@@ -9,6 +9,9 @@ SANDBOX_SKILLS_DIR="$SANDBOX_ROOT/skills"
 SEEDS_DIR="$PROJECT_ROOT/seeds"
 TODAY=$(date +%Y-%m-%d)
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 # Portable sed in-place edit (BSD vs GNU)
 sed_i() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -86,8 +89,8 @@ while true; do
     continue
   fi
 
-  if ! echo "$SKILL_NAME" | grep -qE '^[a-z0-9-]+$'; then
-    echo "  Error: Name must contain only lowercase letters, numbers, and hyphens"
+  if ! skill_name_valid "$SKILL_NAME"; then
+    echo "  Error: Name must be $SKILL_NAME_RULE (no leading, trailing or double hyphens; max $SKILL_NAME_MAX)"
     SKILL_NAME=""
     continue
   fi

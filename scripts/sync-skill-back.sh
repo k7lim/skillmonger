@@ -22,6 +22,9 @@ SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
 # shellcheck source=lib/skill-lock.sh
 . "$SCRIPT_DIR/lib/skill-lock.sh"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 usage() {
   cat << EOF
 Usage: $(basename "$0") <skill-name> --from <deployed-path> [options]
@@ -96,6 +99,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       if [ -z "$SKILL_NAME" ]; then
+        skill_name_require "$1"
         SKILL_NAME="$1"
       else
         echo "Error: Unexpected argument $1"
@@ -129,6 +133,7 @@ if [ ! -d "$SOURCE_DIR" ]; then
   echo "Error: Source skill not found: $SOURCE_DIR"
   exit 1
 fi
+skill_dir_require "$SOURCE_DIR" "$SKILLS_DIR"
 
 if [ ! -d "$FROM_PATH" ]; then
   echo "Error: Deployed skill not found: $FROM_PATH"

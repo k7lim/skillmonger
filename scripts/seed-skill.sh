@@ -12,6 +12,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SEED_DIR="$PROJECT_ROOT/seeds"
 mkdir -p "$SEED_DIR"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 # Get skill name
 if [ $# -ge 1 ]; then
   NAME="$1"
@@ -19,13 +22,10 @@ else
   read -rp "Skill name: " NAME
 fi
 
-# Normalize name
+# Normalize name, then hold it to the contract: normalising strips the
+# characters it cannot use, not a leading hyphen or a 65th character.
 NAME=$(echo "$NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
-
-if [ -z "$NAME" ]; then
-  echo "Need a name." >&2
-  exit 1
-fi
+skill_name_require "$NAME"
 
 # Get idea - from arg, pipe, or prompt
 IDEA=""

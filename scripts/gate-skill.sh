@@ -65,6 +65,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 GATE_PY="$SCRIPT_DIR/lib/gate.py"
 LOG_FEEDBACK="$SCRIPT_DIR/log-feedback.sh"
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 PLUGIN_UNDER_TEST="smgate"
 PLUGIN_BASELINE="smgatebase"
 PROMPT_TRUNCATE=200
@@ -113,6 +116,9 @@ command -v python3 &> /dev/null || { echo "gate-skill.sh: python3 is required" >
 
 SKILL_DIR="$(cd "$SKILL_ARG" && pwd)"
 SKILLS_DIR="$(dirname "$SKILL_DIR")"
+# The directory's name becomes skills/<name>/SKILL.md for git and the name
+# log-feedback.sh writes under; refuse it before anything is derived.
+skill_name_require "${SKILL_DIR##*/}"
 
 # --- The evaluation contract, and whether this skill can be gated at all ----
 

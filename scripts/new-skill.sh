@@ -7,6 +7,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_DIR="$PROJECT_ROOT/skills"
 TODAY=$(date +%Y-%m-%d)
 
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
+
 echo "Creating a new skill..."
 echo ""
 
@@ -21,24 +24,10 @@ while true; do
     continue
   fi
 
-  # Validate name constraints
-  if ! echo "$SKILL_NAME" | grep -qE '^[a-z0-9-]+$'; then
-    echo "  Error: Name must contain only lowercase letters, numbers, and hyphens"
-    continue
-  fi
-
-  if [ ${#SKILL_NAME} -gt 64 ]; then
-    echo "  Error: Name exceeds 64 characters"
-    continue
-  fi
-
-  if [[ "$SKILL_NAME" == -* ]] || [[ "$SKILL_NAME" == *- ]]; then
-    echo "  Error: Name cannot start or end with hyphen"
-    continue
-  fi
-
-  if [[ "$SKILL_NAME" == *--* ]]; then
-    echo "  Error: Name cannot contain consecutive hyphens"
+  # Validate name constraints: the contract lib/skill-name.sh holds every
+  # other script to, so what is created here is a name they will accept.
+  if ! skill_name_valid "$SKILL_NAME"; then
+    echo "  Error: Name must be $SKILL_NAME_RULE (no leading, trailing or double hyphens; max $SKILL_NAME_MAX)"
     continue
   fi
 

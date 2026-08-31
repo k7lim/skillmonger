@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # shellcheck source=lib/deploy-targets.sh
 . "$SCRIPT_DIR/lib/deploy-targets.sh"
+# shellcheck source=lib/skill-name.sh
+. "$SCRIPT_DIR/lib/skill-name.sh"
 
 # Parse arguments
 SKILL_NAME=""
@@ -69,7 +71,20 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
+      # A bare name, or a path to an existing skill directory (skills/<name>/).
+      # Anything else with a slash in it is taken as a name, and rejected as
+      # one. `.` and `..` never get path treatment: their basename would have
+      # been the target root itself, and rm -rf follows.
       SKILL_NAME="$1"
+      case "$SKILL_NAME" in
+        */*)
+          if [ -d "$SKILL_NAME" ]; then
+            SKILL_NAME="$(cd "$SKILL_NAME" && pwd)"
+            SKILL_NAME="${SKILL_NAME##*/}"
+          fi
+          ;;
+      esac
+      skill_name_require "$SKILL_NAME"
       shift
       ;;
   esac
@@ -80,9 +95,6 @@ if [ -z "$SKILL_NAME" ]; then
   echo "Run with --help for more information."
   exit 1
 fi
-
-# Accept a path or bare name
-SKILL_NAME="$(basename "$SKILL_NAME")"
 
 if [ -z "$DO_GLOBAL" ] && [ -z "$LOCAL_DIR" ]; then
   echo "ERROR: Specify --global and/or --local <dir>"

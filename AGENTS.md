@@ -44,26 +44,26 @@ vendor/              # External repos (gitignored content, don't edit)
 
 | Script | Purpose | Depends on |
 |--------|---------|------------|
-| `new-skill.sh` | Create skill in `skills/` | `validate-skill.sh` |
-| `seed-skill.sh` | Capture idea to `seeds/` | nothing |
-| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md`, `lib/skill-state.sh` |
+| `new-skill.sh` | Create skill in `skills/` | `validate-skill.sh`, `lib/skill-name.sh` |
+| `seed-skill.sh` | Capture idea to `seeds/` | `lib/skill-name.sh` |
+| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md`, `lib/skill-state.sh`, `lib/skill-name.sh` |
 | `skill` | Show current skill status and next step | `~/.skillmonger-state` (parsed as `KEY=VALUE` data via `lib/skill-state.sh`, never sourced) |
-| `ship-skill.sh` | Move a sandbox skill into `skills/` | `validate-skill.sh`, `lib/skill-state.sh` |
+| `ship-skill.sh` | Move a sandbox skill into `skills/` | `validate-skill.sh`, `lib/skill-state.sh`, `lib/skill-name.sh` |
 | `validate-skill.sh` | Check structure, frontmatter, and skill format | nothing |
 | `render-epilogue.sh` | Print a skill's format-2 "After Execution" epilogue | skill's CONFIG.yaml |
 | `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |
-| `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline, exit 1 on a regression | `lib/gate.py`, `lib/impact.py`, `log-feedback.sh`, skill's evaluate script, `claude` |
-| `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
-| `undeploy-skill.sh` | Remove deployed symlinks and installed copies; harvests first, `--dry-run` plans, `--yes` for non-interactive removal | `harvest-feedback.sh`, `lib/deploy-targets.sh` |
-| `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
-| `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py` |
-| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
-| `analyze-feedback.sh` | Harvest, then summarize trace trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files |
-| `compact-memo.sh` | Brief the Maintainer for a compaction pass; `--overflow` spills an outgrown wiki into `memo/patterns/` | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py`, `lib/overflow.py` |
+| `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline, exit 1 on a regression | `lib/gate.py`, `lib/impact.py`, `log-feedback.sh`, skill's evaluate script, `claude`, `lib/skill-name.sh` |
+| `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh`, `lib/skill-name.sh` |
+| `undeploy-skill.sh` | Remove deployed symlinks and installed copies; harvests first, `--dry-run` plans, `--yes` for non-interactive removal | `harvest-feedback.sh`, `lib/deploy-targets.sh`, `lib/skill-name.sh` |
+| `sync-skill-back.sh` | Pull deployed changes back to source | `lib/skill-name.sh` |
+| `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py`, `lib/skill-name.sh` |
+| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py`, `lib/skill-name.sh` |
+| `analyze-feedback.sh` | Harvest, then summarize trace trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files, `lib/skill-name.sh` |
+| `compact-memo.sh` | Brief the Maintainer for a compaction pass; `--overflow` spills an outgrown wiki into `memo/patterns/` | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py`, `lib/overflow.py`, `lib/skill-name.sh` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
-| `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |
+| `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py`, `lib/skill-name.sh` |
 | `check-upstream.sh` | Report upstream/local drift for adopted skills | `scripts/lib/upstream.py` |
-| `sync-upstream.sh` | Pull upstream changes into an adopted skill | `scripts/lib/upstream.py` |
+| `sync-upstream.sh` | Pull upstream changes into an adopted skill | `scripts/lib/upstream.py`, `lib/skill-name.sh` |
 
 ## What NOT to Edit
 
