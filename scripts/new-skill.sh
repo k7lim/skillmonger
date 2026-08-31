@@ -111,7 +111,9 @@ echo "Creating skill at $SKILL_DIR/..."
 # Create directories
 mkdir -p "$SKILL_DIR/references"
 
-# Generate SKILL.md
+# Generate SKILL.md body. The "After Execution" epilogue is appended after
+# CONFIG.yaml exists, so it is whatever render-epilogue.sh prints for this
+# skill's declared evaluation mode rather than a copy that can drift.
 cat > "$SKILL_DIR/SKILL.md" << EOF
 ---
 name: $SKILL_NAME
@@ -146,26 +148,8 @@ $ROLE
 [Example output]
 
 ---
-
-## After Execution
-
-After completing the skill output, log feedback to track quality over time.
-
-**Priority cascade:**
-1. If \`scripts/evaluate.sh\` exists in this skill directory, run it and use the JSON result
-2. Otherwise, self-assess using the scale below
-
-**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
-
-**To log feedback**, append one JSON line to \`FEEDBACK.jsonl\` in this skill directory:
-
-\`\`\`json
-{"ts":"<UTC ISO 8601>","skill":"$SKILL_NAME","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
-\`\`\`
-
-Then increment \`iteration_count\` under \`compaction\` in \`CONFIG.yaml\`.
 EOF
-echo "  ✓ Created SKILL.md"
+echo "  ✓ Created SKILL.md (body)"
 
 # Generate CONFIG.yaml
 {
@@ -175,10 +159,19 @@ echo "  ✓ Created SKILL.md"
 
 skill:
   name: $SKILL_NAME
+  format: 2
   version: 1.0.0
   created: $TODAY
   updated: $TODAY
   author: $AUTHOR
+
+evaluation:
+  # programmatic | qualitative | delayed | hybrid. Switch to programmatic or
+  # hybrid once scripts/evaluate.sh exists, and point script: at it.
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 EOF
 
@@ -240,6 +233,13 @@ budget:
 EOF
 } > "$SKILL_DIR/CONFIG.yaml"
 echo "  ✓ Created CONFIG.yaml"
+
+# Append the format-2 epilogue, rendered from the CONFIG just written
+{
+  echo ""
+  "$SCRIPT_DIR/render-epilogue.sh" "$SKILL_DIR"
+} >> "$SKILL_DIR/SKILL.md"
+echo "  ✓ Appended After Execution epilogue (render-epilogue.sh)"
 
 # Generate MEMO.md
 cat > "$SKILL_DIR/MEMO.md" << EOF

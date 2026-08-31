@@ -45,6 +45,86 @@ existed:
 - Evaluation mode is implied by whether `scripts/evaluate*` happens to exist, not
   declared anywhere.
 
+### Format 2
+
+Format 2 is a breaking change to the epilogue contract. The quad-file layout is
+unchanged; what a skill says at the end of `SKILL.md` is not.
+
+- **The epilogue is rendered, not written.** `scripts/render-epilogue.sh
+  skills/<name>/` prints it from `CONFIG.yaml`, so all skills say the same thing
+  in the same words. Editing an epilogue by hand means editing the renderer or
+  the skill's question, not the file.
+- **No `iteration_count` instruction.** A run appends a trace and nothing else;
+  `scripts/harvest-feedback.sh` derives `compaction.iteration_count` from the
+  traces it brings home (ADR 0002). The word does not appear in a format-2
+  epilogue.
+- **The trace still goes into the skill's own directory** — the deployed copy
+  the agent is running, not this repo. A deployed copy on SRT or Pi cannot reach
+  `scripts/log-feedback.sh`, so no epilogue references it. `log-feedback.sh`
+  remains for in-repo use (gate runs, manual logging).
+- **`source` is `script`, `llm` or `user`.** Nothing else. `hybrid` and `self`
+  are not sources.
+- **Evaluation is declared.** `evaluation.mode` says how the skill is scored
+  instead of leaving it to be inferred from a filename.
+
+Migrate a format-1 skill with `scripts/migrate-format-2.sh [--dry-run]
+skills/<name>/`. It lifts the skill's own question out of the old epilogue,
+renders the new one, and writes the CONFIG keys below. It is idempotent: a skill
+already at format 2 is left alone, so hand fixes survive a re-run.
+
+It treats the epilogue as a *section* — `## After Execution` to the next `## `
+heading or end of file — cuts that section out, and appends the rendered
+epilogue at end of file, so every `SKILL.md` ends with its epilogue and any
+section that used to follow the old one survives. A `SKILL.md` with no
+`## After Execution` heading is named and skipped with a non-zero exit rather
+than gaining a second epilogue.
+
+It derives `evaluation.mode` from what the skill already has: **hybrid** when
+an evaluate script exists *and* the old epilogue carried a question of its own,
+**programmatic** when the script exists and there was no question, and
+**qualitative** otherwise. A mode already declared in `CONFIG.yaml` wins. The
+hybrid default exists because most skills with an evaluate script also ask the
+user something, and flattening them to programmatic would throw that question
+away. Prose *about* the evaluator reads as a question to the migrator, so a
+skill that documents its evaluator at length lands on hybrid and wants a hand
+correction to programmatic.
+
+#### The evaluation block
+
+```yaml
+skill:
+  format: 2
+evaluation:
+  mode: programmatic     # programmatic | qualitative | delayed | hybrid
+  script: scripts/evaluate.sh   # required for programmatic and hybrid
+  blind: true            # gate runs withhold the wiki (ADR 0003)
+  tolerance: 0.5         # mean-drop tolerance before a run counts as a regression
+  runner: claude         # reserved; codex later
+  script_emits_outcome: true    # optional, default true
+  script_usage: scripts/evaluate.sh <project-dir>   # optional
+```
+
+| Mode | Epilogue |
+|------|----------|
+| `programmatic` | Run `evaluation.script`, copy its `outcome`, `note` and `checks` into the trace, `source: script`. |
+| `qualitative` | Ask the skill's own question, then log `source: llm` (or `user` when the user answered). |
+| `delayed` | Do not score at execution time; come back when ground truth exists and log `source: user`. |
+| `hybrid` | The script part, then the question. Two traces, one per source. |
+
+`script_emits_outcome: false` marks an evaluator whose JSON carries no `outcome`
+this skill can be scored by — writing-voice-coach's `evaluate.py` scores the text
+the user brought in, not the critique the skill produced. The rendered epilogue
+then runs the script for evidence and routes the score to self-assessment.
+
+`script_usage` overrides the command line the epilogue shows. The documented
+contract is "skill output on stdin or as the first argument"; an evaluator that
+takes something else (a project directory, a saved JSON file) says so here
+rather than letting the epilogue state something untrue.
+
+`validate-skill.sh` under format 2 requires `evaluation.mode` to be one of the
+four, and for `programmatic` and `hybrid` requires `evaluation.script` to exist
+and be executable.
+
 ## Directory Structure
 
 ```
@@ -197,7 +277,17 @@ Append-only log of execution outcomes. One JSON object per line.
 | `outcome` | int 1-5 | 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent |
 | `note` | string | Brief note (especially useful for scores != 4) |
 | `source` | string | `script` (deterministic), `llm` (self-assessment), or `user` (manual) |
-| `schema_version` | int | Always 1 (for future compatibility) |
+| `schema_version` | int | Always 1. It versions the record shape, not the skill format; format 2 adds optional fields rather than changing the shape. |
+
+**Optional trace fields** (format 2). Every reader tolerates fields it does not
+know, so these are added where they are known and omitted otherwise:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session` | string | Id of the session this run came from, when the agent knows it. Points at the transcript; never contains it. |
+| `checks` | object | The evaluate script's `checks` object, copied through unchanged. |
+| `gate` | bool | `true` when the trace came from a gate run rather than a real run. |
+| `fixture` | string | The fixture the gate run used. Only meaningful with `gate: true`. |
 
 **Harvest:** agents run the *deployed copy* of a skill, and its epilogue
 appends the trace there, not here — deployed copies cannot reach this repo

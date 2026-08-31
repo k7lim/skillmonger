@@ -24,7 +24,8 @@ ok() { echo "  ✓ $1"; }
 # skill.format is an integer under skill: in CONFIG.yaml. Missing means 1.
 # Each new format appends its integer here; nothing else in this script needs
 # to know the set.
-SUPPORTED_FORMATS=(1)
+SUPPORTED_FORMATS=(1 2)
+EVALUATION_MODES="programmatic qualitative delayed hybrid"
 
 format_supported() {
   local candidate="$1" known
@@ -34,25 +35,30 @@ format_supported() {
   return 1
 }
 
-# Print skill.format from a CONFIG.yaml, or nothing when the field is absent.
-read_skill_format() {
-  local config="$1"
+# Print a two-level scalar from CONFIG.yaml (e.g. skill.format,
+# evaluation.mode), or nothing when the key is absent.
+read_config_value() {
+  local config="$1" path="$2"
   if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
-    python3 - "$config" <<'PY' 2>/dev/null || true
+    python3 - "$config" "$path" <<'PY' 2>/dev/null || true
 import sys, yaml
 try:
-    cfg = yaml.safe_load(open(sys.argv[1])) or {}
+    node = yaml.safe_load(open(sys.argv[1])) or {}
 except Exception:
     sys.exit(0)
-skill = cfg.get("skill") or {}
-value = skill.get("format")
-if value is not None:
-    print(value)
+for part in sys.argv[2].split("."):
+    if not isinstance(node, dict):
+        sys.exit(0)
+    node = node.get(part)
+if node is None:
+    sys.exit(0)
+print("true" if node is True else "false" if node is False else node)
 PY
   else
-    # sed fallback: take the skill: block, then the first nested format: key
-    sed -n '/^skill:/,/^[^[:space:]#]/p' "$config" \
-      | sed -n 's/^[[:space:]]\{1,\}format:[[:space:]]*\([^[:space:]#]*\).*/\1/p' \
+    # sed fallback: take the top-level block, then the first nested key
+    local top="${path%%.*}" key="${path#*.}"
+    sed -n "/^${top}:/,/^[^[:space:]#]/p" "$config" \
+      | sed -n "s/^[[:space:]]\{1,\}${key}:[[:space:]]*\([^[:space:]#]*\).*/\1/p" \
       | head -1 | tr -d "\"'"
   fi
 }
@@ -185,7 +191,7 @@ if [ -f "$SKILL_DIR/CONFIG.yaml" ]; then
   fi
 
   # Skill format: missing means 1; anything outside SUPPORTED_FORMATS is an error
-  skill_format="$(read_skill_format "$SKILL_DIR/CONFIG.yaml" | head -1 | xargs || true)"
+  skill_format="$(read_config_value "$SKILL_DIR/CONFIG.yaml" skill.format | head -1 | xargs || true)"
   if [ -z "$skill_format" ]; then
     skill_format=1
     ok "Format: 1 (skill.format absent, defaults to 1)"
@@ -193,6 +199,31 @@ if [ -f "$SKILL_DIR/CONFIG.yaml" ]; then
     ok "Format: $skill_format"
   else
     error "skill.format: $skill_format is not a supported skill format (supported: ${SUPPORTED_FORMATS[*]})"
+  fi
+
+  # Format 2 onward: the evaluation contract is declared, not inferred
+  if [ "$skill_format" -ge 2 ] 2>/dev/null; then
+    eval_mode="$(read_config_value "$SKILL_DIR/CONFIG.yaml" evaluation.mode | head -1 | xargs || true)"
+    if [ -z "$eval_mode" ]; then
+      error "format $skill_format requires evaluation.mode ($EVALUATION_MODES)"
+    elif ! echo " $EVALUATION_MODES " | grep -q " $eval_mode "; then
+      error "evaluation.mode: $eval_mode is not one of: $EVALUATION_MODES"
+    else
+      ok "evaluation.mode: $eval_mode"
+
+      if [ "$eval_mode" = "programmatic" ] || [ "$eval_mode" = "hybrid" ]; then
+        eval_script="$(read_config_value "$SKILL_DIR/CONFIG.yaml" evaluation.script | head -1 | xargs || true)"
+        if [ -z "$eval_script" ]; then
+          error "evaluation.mode $eval_mode requires evaluation.script"
+        elif [ ! -f "$SKILL_DIR/$eval_script" ]; then
+          error "evaluation.script not found: $eval_script"
+        elif [ ! -x "$SKILL_DIR/$eval_script" ]; then
+          error "evaluation.script is not executable: $eval_script"
+        else
+          ok "evaluation.script: $eval_script"
+        fi
+      fi
+    fi
   fi
 fi
 

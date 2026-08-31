@@ -16,7 +16,7 @@ Framework for building reusable AI agent skills. Skills deploy to Claude Code, C
 - **Delayed:** Don't log at execution time. Come back when ground truth is available and log with `log-feedback.sh --source user`.
 - **Hybrid:** Evaluate script for verifiable parts, qualitative ask for the rest.
 
-Each feedback entry increments `iteration_count` in CONFIG.yaml. At threshold (default 15), compaction is recommended.
+Under skill format 1 each feedback entry increments `iteration_count` in CONFIG.yaml by hand. Under format 2 the epilogue is rendered by `scripts/render-epilogue.sh` from the CONFIG `evaluation:` block, says nothing about `iteration_count`, and the count is derived when traces are harvested. Either way, at threshold (default 15) compaction is recommended. See `docs/skill-format.md`.
 
 **Deterministic vs natural language split:** Scripts produce data (JSON), prompts interpret meaning. `check-prereqs` is the pre-execution bookend, `evaluate` is the post-execution bookend. See Skill Script Interface below for language options.
 
@@ -43,7 +43,9 @@ vendor/              # External repos (gitignored content, don't edit)
 | `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md` |
 | `skill` | Show current skill status and next step | `~/.skillmonger-state` |
 | `ship-skill.sh` | Promote sandbox skill to `skills/` | `validate-skill.sh` |
-| `validate-skill.sh` | Check structure and frontmatter | nothing |
+| `validate-skill.sh` | Check structure, frontmatter, and skill format | nothing |
+| `render-epilogue.sh` | Print a skill's format-2 "After Execution" epilogue | skill's CONFIG.yaml |
+| `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |

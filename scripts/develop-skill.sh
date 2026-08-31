@@ -214,26 +214,8 @@ Before proceeding, run \`scripts/check-prereqs.sh\` in this skill directory.
 **Response:** [Example response]
 
 ---
-
-## After Execution
-
-After completing the skill output, log feedback to track quality over time.
-
-**Priority cascade:**
-1. If \`scripts/evaluate.sh\` exists in this skill directory, run it and use the JSON result
-2. Otherwise, self-assess using the scale below
-
-**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
-
-**To log feedback**, append one JSON line to \`FEEDBACK.jsonl\` in this skill directory:
-
-\`\`\`json
-{"ts":"<UTC ISO 8601>","skill":"$SKILL_NAME","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
-\`\`\`
-
-Then increment \`iteration_count\` under \`compaction\` in \`CONFIG.yaml\`.
 EOF
-echo "  ✓ Created SKILL.md (draft)"
+echo "  ✓ Created SKILL.md (draft body)"
 
 # Generate CONFIG.yaml with placeholder triggers
 cat > "$SKILL_DIR/CONFIG.yaml" << EOF
@@ -241,9 +223,20 @@ cat > "$SKILL_DIR/CONFIG.yaml" << EOF
 
 skill:
   name: $SKILL_NAME
+  format: 2
   version: 0.1.0
   created: $TODAY
   updated: $TODAY
+
+evaluation:
+  # programmatic | qualitative | delayed | hybrid. The scaffold ships an
+  # evaluate.sh template; drop to qualitative if this skill cannot be scored
+  # deterministically, and delete the script rather than leaving a stub.
+  mode: programmatic
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   # REQUIRED: Natural language phrases that should invoke this skill (5-10)
@@ -394,6 +387,14 @@ chmod +x "$SKILL_DIR/scripts/evaluate.sh"
 echo "  ✓ Created scripts/evaluate.sh (template)"
 
 echo "  ✓ Created references/ (empty)"
+
+# Append the format-2 epilogue now that CONFIG.yaml and the evaluate script
+# exist, so it matches what render-epilogue.sh prints for this scaffold.
+{
+  echo ""
+  "$SCRIPT_DIR/render-epilogue.sh" "$SKILL_DIR"
+} >> "$SKILL_DIR/SKILL.md"
+echo "  ✓ Appended After Execution epilogue (render-epilogue.sh)"
 
 # --- Write State ---
 
