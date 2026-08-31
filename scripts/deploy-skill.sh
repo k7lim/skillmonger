@@ -15,13 +15,15 @@ TOOL_PATHS=(
   "pi:$HOME/.pi/agent/skills:.pi/skills:copy"
 )
 
-# SRT points Claude and Codex at separate credential homes. These paths retain
-# their legacy names for now, but they are SRT agent homes, not container
-# deployment targets. Skills must be copied because SRT denies access to the
-# shared ~/.local store that backs the host symlinks.
+# Protected workspaces run every agent under one redirected HOME (the sandbox
+# home, see yolobox-pattern example/seed-sandbox-home.sh). Skills must be
+# copied there because the sandbox denies the shared ~/.local store that backs
+# the host symlinks. The pre-2026-08-25 per-tool homes (~/.claude-yolobox,
+# ~/.codex-yolobox) are retired.
+YOLOBOX_SANDBOX_HOME="${YOLOBOX_SANDBOX_HOME:-$HOME/.local/share/yolobox/home}"
 SANDBOX_TOOL_PATHS=(
-  "claude:$HOME/.claude-yolobox/skills"
-  "codex:$HOME/.codex-yolobox/skills"
+  "claude:$YOLOBOX_SANDBOX_HOME/.claude/skills"
+  "codex:$YOLOBOX_SANDBOX_HOME/.codex/skills"
 )
 
 # Parse arguments

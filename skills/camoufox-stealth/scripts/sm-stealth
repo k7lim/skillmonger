@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""sm-stealth — fetch pages through Camoufox (stealth Firefox) from the CLI.
+
+Subcommands:
+  fetch <url> [options]   render a page and emit text/html/screenshot/meta
+  doctor                  print readiness JSON (never fails), exit 0
+  --help
+
+See CONTRACT.md for the authoritative flag/output/exit-code spec.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+# --- constants ---------------------------------------------------------------
+
+OUT_MODES = ("text", "html", "screenshot", "meta")  # pdf intentionally excluded
+BINARY_OUT = {"screenshot"}
+MARKER = Path.home() / ".cache" / "sm-stealth" / "fetched"
+PKG = "camoufox[geoip]"
+
+# exit codes
+EX_OK, EX_USAGE, EX_NAV, EX_BOOTSTRAP = 0, 2, 3, 4
+
+
+# --- helpers -----------------------------------------------------------------
+
+def emit_error(msg: str, kind: str, code: int) -> int:
+    """Print a JSON error envelope to stderr and return the exit code."""
+    print(json.dumps({"ok": False, "error": msg, "kind": kind}), file=sys.stderr)
+    return code
+
+
+def redact(url: str | None) -> str | None:
+    """Strip userinfo (user:pass@) from a URL for safe logging."""
+    if not url:
+        return url
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if parts.username is None and parts.password is None:
+        return url
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    netloc = f"***:***@{host}" if parts.password is not None else f"***@{host}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+def scrub(text: str, secret: str | None) -> str:
+    """Remove a raw proxy URL (and its userinfo) from arbitrary text."""
+    if not text:
+        return text
+    if secret:
+        red = redact(secret) or ""
+        text = text.replace(secret, red)
+        p = urlsplit(secret)
+        if p.password:
+            text = text.replace(p.password, "***")
+        if p.username:
+            text = text.replace(p.username, "***")
+    return text
+
+
+def parse_proxy(url: str) -> dict:
+    """Turn http://user:pass@host:port into a Camoufox proxy dict (creds split out)."""
+    p = urlsplit(url)
+    if not p.hostname:
+        raise ValueError(f"invalid proxy URL: {redact(url)}")
+    host = p.hostname
+    if p.port:
+        host = f"{host}:{p.port}"
+    server = urlunsplit((p.scheme or "http", host, "", "", ""))
+    proxy = {"server": server}
+    if p.username:
+        proxy["username"] = p.username
+    if p.password:
+        proxy["password"] = p.password
+    return proxy
+
+
+# --- bootstrap ---------------------------------------------------------------
+
+def _pip_install(quiet: bool) -> None:
+    if not quiet:
+        print(f"sm-stealth: installing {PKG} (one-time)…", file=sys.stderr)
+    cmd = [sys.executable, "-m", "pip", "install", "-U", PKG]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        # macOS/PEP-668 externally-managed fallback
+        r = subprocess.run(cmd + ["--user"], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "pip install failed").strip())
+
+
+def _binary_present() -> bool:
+    try:
+        from camoufox.pkgman import launch_path
+        return os.path.exists(launch_path())
+    except Exception:
+        return False
+
+
+def _fetch_binary(quiet: bool) -> None:
+    if not quiet:
+        print("sm-stealth: fetching Camoufox browser binary (~150MB, one-time)…",
+              file=sys.stderr)
+    r = subprocess.run([sys.executable, "-m", "camoufox", "fetch"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "camoufox fetch failed").strip())
+
+
+def bootstrap(quiet: bool = False) -> None:
+    """Ensure camoufox + browser binary are present. Raises RuntimeError on failure."""
+    try:
+        import camoufox  # noqa: F401
+    except ImportError:
+        _pip_install(quiet)
+        try:
+            import camoufox  # noqa: F401
+        except ImportError as e:
+            raise RuntimeError(f"camoufox unimportable after install: {e}")
+
+    if MARKER.exists() and _binary_present():
+        return
+    if not _binary_present():
+        _fetch_binary(quiet)
+        if not _binary_present():
+            raise RuntimeError("camoufox browser binary still missing after fetch")
+    MARKER.parent.mkdir(parents=True, exist_ok=True)
+    MARKER.touch()
+
+
+# --- doctor ------------------------------------------------------------------
+
+def gather_readiness() -> dict:
+    checks = []
+    v = sys.version_info
+    pyver = f"{v.major}.{v.minor}.{v.micro}"
+    if v >= (3, 10):
+        checks.append({"name": "python3", "status": "ok", "version": pyver})
+    else:
+        checks.append({"name": "python3", "status": "outdated", "version": pyver,
+                       "hint": "3.10+ recommended by Camoufox; older may still work"})
+
+    try:
+        import pip  # noqa: F401
+        checks.append({"name": "pip", "status": "ok"})
+    except ImportError:
+        checks.append({"name": "pip", "status": "missing",
+                       "hint": "install pip to enable auto-bootstrap"})
+
+    cam_ok = False
+    try:
+        import camoufox  # noqa: F401
+        from camoufox.pkgman import installed_verstr
+        try:
+            ver = installed_verstr()
+        except Exception:
+            ver = None
+        checks.append({"name": "camoufox", "status": "ok", **({"version": ver} if ver else {})})
+        cam_ok = True
+    except ImportError:
+        checks.append({"name": "camoufox", "status": "missing",
+                       "hint": "run any fetch to auto-install, or: pip install -U 'camoufox[geoip]'"})
+
+    bin_ok = _binary_present()
+    checks.append({"name": "browser-binary",
+                   "status": "ok" if bin_ok else "missing",
+                   **({} if bin_ok else {"hint": "run any fetch to auto-fetch, or: python3 -m camoufox fetch"})})
+
+    ready = cam_ok and bin_ok
+    return {"ready": ready, "checks": checks, "context": {"python": pyver}}
+
+
+def cmd_doctor(args) -> int:
+    readiness = gather_readiness()
+    endpoint = remote_endpoint(args)
+    if endpoint:
+        import urllib.request
+        try:
+            with urllib.request.urlopen(f"{endpoint}/healthz", timeout=8) as resp:
+                health = json.loads(resp.read())
+            status = "ok" if health.get("ok") else "unhealthy"
+        except Exception as e:  # noqa: BLE001 - doctor never fails
+            health, status = None, f"unreachable: {str(e).splitlines()[0][:80]}"
+        readiness["remote"] = {"endpoint": endpoint, "status": status, "health": health}
+        # In remote mode the local browser/pip checks are informational only.
+        readiness["ready"] = status == "ok"
+    print(json.dumps(readiness))
+    return EX_OK
+
+
+# --- remote mode (protected workspaces) --------------------------------------
+#
+# Inside a nono protected workspace a browser cannot launch (Seatbelt denies the
+# Mach bootstrap every multi-process browser needs). The host runs
+# camoufox-host-server (yolobox-pattern) on the curated loopback alias, and we
+# reach it over plain HTTP through the sandbox's egress proxy. Selection:
+#   --remote URL / SM_STEALTH_REMOTE=URL   explicit endpoint
+#   --local                                force a local browser
+#   otherwise: remote iff $HOME/.yolobox-sandbox-home exists (sandbox home marker)
+
+DEFAULT_REMOTE = "http://127.0.0.2:9333"
+SANDBOX_MARKER = Path.home() / ".yolobox-sandbox-home"
+REMOTE_IGNORED = ("proxy", "geoip", "locale", "headed", "humanize", "os")
+
+
+def remote_endpoint(args) -> str | None:
+    if getattr(args, "local", False):
+        return None
+    explicit = getattr(args, "remote", None) or os.environ.get("SM_STEALTH_REMOTE")
+    if explicit:
+        return explicit.rstrip("/")
+    if SANDBOX_MARKER.exists():
+        return DEFAULT_REMOTE
+    return None
+
+
+def remote_fetch(endpoint: str, args) -> int:
+    import urllib.error
+    import urllib.request
+
+    ignored = [f for f in REMOTE_IGNORED if getattr(args, f, None)]
+    if ignored:
+        print(f"sm-stealth: remote mode; fingerprint/proxy flags are fixed server-side, "
+              f"ignoring: {', '.join('--' + f for f in ignored)}", file=sys.stderr)
+
+    payload = {"url": args.url, "out": args.out, "wait_until": args.wait_until,
+               "timeout": args.timeout, "wait_selector": args.wait_selector,
+               "block_images": bool(args.block_images)}
+    req = urllib.request.Request(f"{endpoint}/fetch", data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        # urllib honours http_proxy/no_proxy from the environment, which is how
+        # the sandbox reaches 127.0.0.2 (it is not in no_proxy; 127.0.0.1 is).
+        with urllib.request.urlopen(req, timeout=(args.timeout / 1000) + 30) as resp:
+            body = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read())
+        except ValueError:
+            body = {"ok": False, "error": f"HTTP {e.code}", "kind": "nav"}
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return emit_error(f"cannot reach camoufox-host-server at {endpoint}: {e}", "bootstrap",
+                          EX_BOOTSTRAP)
+
+    if not body.get("ok"):
+        kind = body.get("kind", "nav")
+        code = EX_USAGE if kind in ("usage", "policy") else EX_NAV
+        return emit_error(body.get("error", "remote fetch failed"), kind, code)
+
+    final_url, status, title = body.get("final_url"), body.get("status"), body.get("title")
+    if args.out == "meta":
+        print(json.dumps({"ok": True, "final_url": final_url, "status": status, "title": title}))
+    elif args.out == "screenshot":
+        import base64
+        Path(args.output_file).write_bytes(base64.b64decode(body["screenshot_b64"]))
+        print(json.dumps({"ok": True, "path": args.output_file, "final_url": final_url,
+                          "title": title}))
+    else:
+        content = body.get("content", "")
+        if args.json:
+            print(json.dumps({"ok": True, "final_url": final_url, "status": status,
+                              "title": title, "content": content}))
+        elif args.output_file:
+            Path(args.output_file).write_text(content, encoding="utf-8")
+            print(json.dumps({"ok": True, "path": args.output_file, "final_url": final_url,
+                              "title": title}))
+        else:
+            sys.stdout.write(content)
+            if not content.endswith("\n"):
+                sys.stdout.write("\n")
+    return EX_OK
+
+
+# --- fetch -------------------------------------------------------------------
+
+def build_launch_kwargs(args) -> tuple[dict, str | None]:
+    kwargs: dict = {"headless": not args.headed}
+    if args.humanize:
+        kwargs["humanize"] = True
+    if args.os:
+        kwargs["os"] = args.os
+    if args.locale:
+        kwargs["locale"] = args.locale
+    if args.block_images:
+        kwargs["block_images"] = True
+
+    proxy_url = args.proxy or os.environ.get("SM_STEALTH_PROXY")
+    if proxy_url:
+        kwargs["proxy"] = parse_proxy(proxy_url)
+
+    if args.geoip is not None:
+        # --geoip with no value -> "auto"; "auto" means match exit IP (geoip=True)
+        kwargs["geoip"] = True if args.geoip in ("auto", "") else args.geoip
+
+    return kwargs, proxy_url
+
+
+def cmd_fetch(args) -> int:
+    # --- usage validation (exit 2) ---
+    if args.out not in OUT_MODES:
+        if args.out == "pdf":
+            return emit_error(
+                "PDF output is unsupported: Camoufox is Firefox-based and Playwright "
+                "PDF generation is Chromium-only. Use --out screenshot instead.",
+                "usage", EX_USAGE)
+        return emit_error(f"invalid --out {args.out!r}; choose from {', '.join(OUT_MODES)}",
+                          "usage", EX_USAGE)
+    if args.out in BINARY_OUT and not args.output_file:
+        return emit_error(f"--out {args.out} requires --output-file PATH", "usage", EX_USAGE)
+
+    endpoint = remote_endpoint(args)
+    if endpoint:
+        return remote_fetch(endpoint, args)
+
+    try:
+        kwargs, proxy_url = build_launch_kwargs(args)
+    except ValueError as e:
+        return emit_error(str(e), "usage", EX_USAGE)
+
+    try:
+        bootstrap()
+    except RuntimeError as e:
+        return emit_error(scrub(str(e), proxy_url), "bootstrap", EX_BOOTSTRAP)
+
+    from camoufox.sync_api import Camoufox
+
+    try:
+        with Camoufox(**kwargs) as browser:
+            page = browser.new_page()
+            resp = page.goto(args.url, wait_until=args.wait_until, timeout=args.timeout)
+            if args.wait_selector:
+                page.wait_for_selector(args.wait_selector, timeout=args.timeout)
+
+            status = resp.status if resp else None
+            final_url = page.url
+            title = page.title()
+
+            if args.out == "meta":
+                print(json.dumps({"ok": True, "final_url": final_url,
+                                  "status": status, "title": title}))
+            elif args.out == "screenshot":
+                page.screenshot(path=args.output_file, full_page=True)
+                print(json.dumps({"ok": True, "path": args.output_file,
+                                  "final_url": final_url, "title": title}))
+            else:  # text or html
+                content = page.content() if args.out == "html" else page.inner_text("body")
+                if args.json:
+                    print(json.dumps({"ok": True, "final_url": final_url, "status": status,
+                                      "title": title, "content": content}))
+                elif args.output_file:
+                    Path(args.output_file).write_text(content, encoding="utf-8")
+                    print(json.dumps({"ok": True, "path": args.output_file,
+                                      "final_url": final_url, "title": title}))
+                else:
+                    sys.stdout.write(content)
+                    if not content.endswith("\n"):
+                        sys.stdout.write("\n")
+        return EX_OK
+    except Exception as e:
+        msg = scrub(f"{type(e).__name__}: {e}", proxy_url)
+        # first line only keeps Playwright's noisy multi-line errors readable
+        return emit_error(msg.splitlines()[0], "nav", EX_NAV)
+
+
+# --- argparse ----------------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="sm-stealth",
+        description="Fetch web pages through Camoufox (stealth Firefox).")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    f = sub.add_parser("fetch", help="render a URL and emit its content")
+    f.add_argument("url")
+    f.add_argument("--out", default="text", metavar="MODE",
+                   help="text (default) | html | screenshot | meta")
+    f.add_argument("--output-file", metavar="PATH",
+                   help="write result to file (required for screenshot)")
+    f.add_argument("--wait-selector", metavar="SEL",
+                   help="wait for this CSS selector before capturing")
+    f.add_argument("--wait-until", default="load",
+                   choices=("load", "domcontentloaded", "networkidle"),
+                   help="Playwright navigation wait state (default: load)")
+    f.add_argument("--timeout", type=int, default=30000, metavar="MS",
+                   help="navigation + selector timeout (default: 30000)")
+    f.add_argument("--proxy", metavar="URL",
+                   help="http://user:pass@host:port (env SM_STEALTH_PROXY fallback)")
+    f.add_argument("--geoip", nargs="?", const="auto", default=None, metavar="VAL",
+                   help="match timezone/locale to IP; 'auto' (exit IP) or an explicit IP")
+    f.add_argument("--locale", metavar="STR", help="e.g. en-US")
+    f.add_argument("--headed", action="store_true", help="show the browser window")
+    f.add_argument("--humanize", action="store_true", help="humanized cursor movement")
+    f.add_argument("--os", choices=("windows", "macos", "linux"),
+                   help="spoof OS fingerprint (default: random per launch)")
+    f.add_argument("--block-images", action="store_true", help="skip image loads (faster)")
+    f.add_argument("--json", action="store_true",
+                   help="wrap text/html result in a JSON envelope with meta")
+    f.add_argument("--remote", metavar="URL",
+                   help="fetch via a camoufox-host-server endpoint (env SM_STEALTH_REMOTE; "
+                        "default inside a protected workspace: " + DEFAULT_REMOTE + ")")
+    f.add_argument("--local", action="store_true",
+                   help="force a local browser even inside a protected workspace")
+    f.set_defaults(func=cmd_fetch)
+
+    d = sub.add_parser("doctor", help="print readiness JSON (exit 0 always)")
+    d.set_defaults(func=cmd_doctor)
+
+    return p
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
