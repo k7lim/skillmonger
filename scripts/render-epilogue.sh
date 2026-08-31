@@ -259,6 +259,9 @@ case "$MODE" in
       question_block
       echo ""
       trace_block llm "<1-5>" "<one line, especially when the outcome is not 4>"
+      echo ""
+      echo "Use \`\"source\":\"user\"\` when the score came from the user rather than from your"
+      echo "own assessment."
     fi
     ;;
 
