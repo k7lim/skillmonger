@@ -45,23 +45,6 @@ Key flags: `--out text|html|screenshot|meta` (default `text`; there is NO pdf mo
 - `--out pdf` fails with exit 2 (Playwright PDF is Chromium-only) — use `--out screenshot`, or HTML→PDF externally (see references).
 - `--block-images` prints an advisory upstream `LeakWarning` to stderr and may aid detection on some WAFs; stdout and exit code stay clean.
 
-## After Execution
-
-After a run, build a run-record and pipe it to the evaluator (stdin):
-
-```bash
-echo '{"url":"<url>","out":"<text|html|screenshot|meta>","exit_code":<int>,"bytes":<int>,"title":"<title or empty>"}' \
-  | python3 scripts/evaluate.py
-```
-
-It returns `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`. Then append one line to `FEEDBACK.jsonl` using that `outcome`:
-
-```json
-{"ts":"<ISO 8601>","skill":"camoufox-stealth","version":"<from CONFIG.yaml>","prompt":"<request>","outcome":<1-5>,"note":"...","source":"script","schema_version":1}
-```
-
-Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
-
 ## Remote mode (protected workspaces)
 
 Inside a nono protected workspace a browser cannot launch, so `sm-stealth`
@@ -75,3 +58,30 @@ fixed server-side and ignored (announced on stderr); `--out`, `--wait-*`,
 refuses `file://`, loopback, LAN and metadata destinations (`kind: policy`,
 exit 2). Force a local browser with `--local`; point elsewhere with
 `--remote URL` / `SM_STEALTH_REMOTE`.
+
+## After Execution
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+echo '{"url":"<url>","out":"<text|html|screenshot|meta>","exit_code":<int>,"bytes":<int>,"title":"<title or empty>"}' | python3 scripts/evaluate.py
+```
+
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+Copy its `outcome`, `note` and `checks` straight through — do not re-score
+them yourself.
+
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"camoufox-stealth","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+If the evaluator cannot run, say why in `note`, score the run yourself on the
+standard scale (1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent), and set
+`"source":"llm"`.
