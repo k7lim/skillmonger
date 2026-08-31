@@ -20,6 +20,43 @@ error() { echo "ERROR: $1"; ((error_count++)) || true; }
 warn() { echo "WARNING: $1"; ((warning_count++)) || true; }
 ok() { echo "  ✓ $1"; }
 
+# --- Skill format (docs/skill-format.md: Format version) -------------------
+# skill.format is an integer under skill: in CONFIG.yaml. Missing means 1.
+# Each new format appends its integer here; nothing else in this script needs
+# to know the set.
+SUPPORTED_FORMATS=(1)
+
+format_supported() {
+  local candidate="$1" known
+  for known in "${SUPPORTED_FORMATS[@]}"; do
+    [ "$candidate" = "$known" ] && return 0
+  done
+  return 1
+}
+
+# Print skill.format from a CONFIG.yaml, or nothing when the field is absent.
+read_skill_format() {
+  local config="$1"
+  if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
+    python3 - "$config" <<'PY' 2>/dev/null || true
+import sys, yaml
+try:
+    cfg = yaml.safe_load(open(sys.argv[1])) or {}
+except Exception:
+    sys.exit(0)
+skill = cfg.get("skill") or {}
+value = skill.get("format")
+if value is not None:
+    print(value)
+PY
+  else
+    # sed fallback: take the skill: block, then the first nested format: key
+    sed -n '/^skill:/,/^[^[:space:]#]/p' "$config" \
+      | sed -n 's/^[[:space:]]\{1,\}format:[[:space:]]*\([^[:space:]#]*\).*/\1/p' \
+      | head -1 | tr -d "\"'"
+  fi
+}
+
 # Check 1: SKILL.md exists (required)
 echo "Checking required files..."
 if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
@@ -145,6 +182,17 @@ if [ -f "$SKILL_DIR/CONFIG.yaml" ]; then
     else
       warn "CONFIG.yaml present but couldn't validate (install PyYAML)"
     fi
+  fi
+
+  # Skill format: missing means 1; anything outside SUPPORTED_FORMATS is an error
+  skill_format="$(read_skill_format "$SKILL_DIR/CONFIG.yaml" | head -1 | xargs || true)"
+  if [ -z "$skill_format" ]; then
+    skill_format=1
+    ok "Format: 1 (skill.format absent, defaults to 1)"
+  elif format_supported "$skill_format"; then
+    ok "Format: $skill_format"
+  else
+    error "skill.format: $skill_format is not a supported skill format (supported: ${SUPPORTED_FORMATS[*]})"
   fi
 fi
 

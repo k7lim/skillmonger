@@ -2,6 +2,49 @@
 
 This document describes the file format for skillmonger skills.
 
+## Format version
+
+`skill.format` is an integer under `skill:` in `CONFIG.yaml`. It versions the
+**skill format** — the contract every skill in this repo follows: which files a
+skill has, what its epilogue does, what its scripts emit.
+
+```yaml
+skill:
+  name: my-skill
+  format: 1
+```
+
+**Missing means 1.** Skills written before the field existed are format 1 and
+need no edit. `scripts/validate-skill.sh` reads the field and errors on any
+value it does not know; the repo is tagged `format-N.M` at each step of the
+ladder, so a skill copied out of the repo carries the contract its epilogue
+follows.
+
+Do not confuse it with two neighbouring numbers:
+
+| Number | Lives in | Means |
+|--------|----------|-------|
+| `skill.format` | `CONFIG.yaml` | The contract this skill follows. One integer for the whole repo. |
+| `skill.version` | `CONFIG.yaml` | This skill's own semver. Bumped when its behaviour changes. Says nothing about the format. |
+| `schema_version` | each `FEEDBACK.jsonl` line | The trace record shape. Always 1. |
+
+### Format 1
+
+Format 1 is the contract every skill was written against before the field
+existed:
+
+- **Quad-file layout:** `SKILL.md` (required), `CONFIG.yaml`, `MEMO.md`, and an
+  append-only `FEEDBACK.jsonl` created on first use.
+- **Hand-appended epilogue.** Each `SKILL.md` ends with an `## After Execution`
+  section written by hand for that skill. There is no renderer, so the wording,
+  the heading, and the JSON example drift from skill to skill.
+- The epilogue tells the agent to append one trace to `FEEDBACK.jsonl` and then
+  to hand-increment `compaction.iteration_count` in `CONFIG.yaml`.
+- Trace fields are the seven below plus `schema_version`; `source` is documented
+  as `script | llm | user` but nothing enforces it.
+- Evaluation mode is implied by whether `scripts/evaluate*` happens to exist, not
+  declared anywhere.
+
 ## Directory Structure
 
 ```
