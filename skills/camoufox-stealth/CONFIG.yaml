@@ -1,0 +1,46 @@
+# Configuration for camoufox-stealth
+
+skill:
+  name: camoufox-stealth
+  format: 2
+  version: 0.1.0
+  created: 2026-08-26
+  updated: 2026-08-26
+
+evaluation:
+  mode: programmatic
+  script: scripts/evaluate.py
+  script_usage: >-
+    echo '{"url":"<url>","out":"<text|html|screenshot|meta>","exit_code":<int>,"bytes":<int>,"title":"<title or empty>"}' | python3 scripts/evaluate.py
+  blind: true
+  tolerance: 0.5
+  runner: claude
+
+triggers:
+  # REQUIRED: Natural language phrases that should invoke this skill (5-10)
+  phrases:
+    - "scrape a site that blocks bots"
+    - "get past Cloudflare"
+    - "stealth browser scrape"
+    - "fetch a JS-rendered page headless"
+    - "scrape with a residential proxy"
+    - "browse anonymously with a spoofed fingerprint"
+    - "screenshot a bot-walled page"
+    - "anti-detect browser automation"
+  # REQUIRED: Semantic keywords for matching (3-5)
+  keywords:
+    - camoufox
+    - stealth
+    - anti-detect
+    - scraping
+    - fingerprint
+
+dependencies:
+  tools: []
+  cli:
+    - python3
+    - pip
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 0

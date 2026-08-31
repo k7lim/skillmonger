@@ -1,0 +1,7 @@
+interface:
+  display_name: "Global Social Proof"
+  short_description: "Find trusted discussions beyond the English web"
+  default_prompt: "Use $global-social-proof to find and synthesize high-quality multilingual community discussions about this topic."
+
+policy:
+  allow_implicit_invocation: true

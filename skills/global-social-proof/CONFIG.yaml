@@ -1,0 +1,42 @@
+skill:
+  name: global-social-proof
+  format: 2
+  version: 0.1.0
+  created: 2026-07-30
+  updated: 2026-07-30
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.py
+  blind: true
+  tolerance: 0.5
+  runner: claude
+
+triggers:
+  phrases:
+    - "find global social proof for"
+    - "search high-quality discussions about"
+    - "what do users around the world say about"
+    - "find non-English discussions about"
+    - "search Reddit and similar communities globally"
+    - "find local-language community opinions"
+    - "look beyond the English bubble"
+    - "find multilingual user experiences"
+  keywords:
+    - multilingual
+    - discussions
+    - communities
+    - social-proof
+    - user-experience
+
+dependencies:
+  tools:
+    - web-search
+    - subagents
+  skills: [centers-of-excellence]
+  optional_skills: [discussion-thread-cli]
+  cli: []
+
+compaction:
+  cycle_threshold: 15
+  iteration_count: 39
