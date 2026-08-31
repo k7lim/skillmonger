@@ -1,0 +1,1 @@
+Plain curl against https://www.g2.com/products/notion/reviews returns a 403 challenge page. Use the stealth browser to fetch the rendered text of that page headless, and tell me the page title, how many bytes of text came back, and whether the reviews themselves are in the output or just the shell.

@@ -1,0 +1,1 @@
+I want ~/Books/The-Mythical-Man-Month.epub as a single merged markdown file with the images downloaded locally so I can drop the whole thing into my Obsidian vault. Put the result in ~/Books/md/mythical-man-month/.

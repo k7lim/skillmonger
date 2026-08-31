@@ -1,0 +1,1 @@
+Screenshot the pricing page at https://vercel.com/pricing as a real browser renders it — wget just gets an empty React shell. Wait for the plan cards to load, save the screenshot under ~/scratch/stealth/vercel-pricing.png, and report the exit code, output size and title from the run.

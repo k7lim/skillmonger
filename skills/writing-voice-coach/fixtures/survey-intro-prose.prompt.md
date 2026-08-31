@@ -1,0 +1,3 @@
+Does this sound like AI wrote it? It is the intro paragraph for an end-of-semester course survey. Find the AI patterns and clean it up so it is short and plain.
+
+"Your feedback is incredibly valuable to us! This survey is designed to gather your insights on your learning experience this semester, and your honest responses will play a crucial role in shaping and enhancing the course for future students. The survey should take approximately five to ten minutes to complete, and all responses are completely anonymous. We deeply appreciate you taking the time to share your perspective — it truly makes a difference. Let's work together to create an even better learning environment moving forward!"
