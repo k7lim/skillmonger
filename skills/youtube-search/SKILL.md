@@ -88,20 +88,12 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate   # takes the output on stdin, or as its first argument
+cat results.json | scripts/evaluate
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
-
-Run the evaluator:
-
-```bash
-cat results.json | scripts/evaluate
-```
-
-Scores 1-5 based on views/day, like ratio, channel size, chapters, captions, heatmap.
 
 **Score >= 4:** Log and proceed.
 **Score < 4:** Ask "Do these results match what you were looking for, or should I refine?" Map: yes=4, partially=3, no=2. On alternate runs, self-assess instead of asking.

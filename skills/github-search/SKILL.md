@@ -115,18 +115,14 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate   # takes the output on stdin, or as its first argument
+scripts/evaluate <results.json>
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-**Hybrid feedback:** Run `scripts/evaluate` on your results JSON, then ask user:
-
 > "Did these results help you decide whether to build or use an existing project?"
-
-Final score = min(script score, user score).
 
 Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 

@@ -99,7 +99,7 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-Run `echo "$OUTPUT" | scripts/evaluate.sh` and use the score. On alternate runs, ask: "Did these timestamps point to the right moments?" Map: exactly=5, mostly=4, some=3, mostly wrong=2, useless=1.
+On alternate runs, ask: "Did these timestamps point to the right moments?" Map: exactly=5, mostly=4, some=3, mostly wrong=2, useless=1.
 
 **3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
 skill directory — the copy you are running from, not the skillmonger repo:

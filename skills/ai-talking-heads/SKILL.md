@@ -271,18 +271,6 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-### Step 1: Structural Score
-
-Run `scripts/evaluate.sh` — pipe the full skill output to it:
-
-```bash
-echo "$OUTPUT" | scripts/evaluate.sh
-```
-
-The script checks chunk structure, syllable ranges, image/video prompt markers, and post-production references. Use the JSON result for the structural score.
-
-### Step 2: Qualitative Score
-
 **On the first run and every 3rd run thereafter**, ask the user:
 
 > "Did the generated clips match your character consistently? Would you use these prompts without major edits?"

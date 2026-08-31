@@ -11,6 +11,7 @@ skill:
 evaluation:
   mode: hybrid
   script: scripts/evaluate
+  script_usage: scripts/evaluate <results.json>
   blind: true
   tolerance: 0.5
   runner: claude

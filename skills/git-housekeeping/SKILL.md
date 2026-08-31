@@ -163,8 +163,6 @@ Self-assess against these criteria:
 - Did you run relevant verification or state why not?
 - Did final `git status --short --branch` match the reported state?
 
-If `scripts/evaluate.sh` exists, pipe the final report into it and use its JSON as a starting point. Override only when the script misses important context.
-
 Map: 5=clean atomic commits, verified, remote state handled; 4=good commit trail with minor residuals; 3=work preserved but grouping or verification was partial; 2=mostly inspection with little cleanup; 1=lost work, mixed unrelated changes, or misreported state.
 
 **3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
