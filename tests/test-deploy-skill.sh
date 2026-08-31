@@ -159,10 +159,31 @@ HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/deploy-skill.sh" \
 [ ! -e "$SANDBOX_HOME/.codex/skills/store-only-skill" ]
 [ ! -e "$FAKE_HOME/.pi/agent/skills/store-only-skill" ]
 
+# Undeploy removes from the same targets deploy writes to, and harvests each
+# one first: a trace an agent wrote into a copy must be home before rm -rf.
+printf '%s\n' '{"ts":"2026-08-31T12:00:00Z","skill":"example-skill","version":"1.0.0","prompt":"from pi before undeploy","outcome":4,"note":"","source":"llm","schema_version":1}' \
+  >> "$FAKE_HOME/.pi/agent/skills/example-skill/FEEDBACK.jsonl"
+printf '%s\n' '{"ts":"2026-08-31T12:01:00Z","skill":"example-skill","version":"1.0.0","prompt":"from the local project before undeploy","outcome":3,"note":"","source":"llm","schema_version":1}' \
+  >> "$LOCAL_PROJECT/.pi/skills/example-skill/FEEDBACK.jsonl"
+printf '%s\n' '{"ts":"2026-08-31T12:02:00Z","skill":"example-skill","version":"1.0.0","prompt":"from the sandbox before undeploy","outcome":5,"note":"","source":"script","schema_version":1}' \
+  >> "$SANDBOX_HOME/.claude/skills/example-skill/FEEDBACK.jsonl"
+
 HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
   example-skill --global --local "$LOCAL_PROJECT" --tools pi >/dev/null
 [ ! -e "$FAKE_HOME/.pi/agent/skills/example-skill" ]
 [ ! -e "$LOCAL_PROJECT/.pi/skills/example-skill" ]
 [ ! -e "$STORE" ]
+grep -q '"prompt":"from pi before undeploy"' "$REPO_FEEDBACK"
+grep -q '"prompt":"from the local project before undeploy"' "$REPO_FEEDBACK"
+
+# --tools pi left the sandbox-home copies alone; the default tool list
+# removes them too, and their traces come home first.
+[ -d "$SANDBOX_HOME/.claude/skills/example-skill" ]
+HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
+  example-skill --global >/dev/null
+[ ! -e "$SANDBOX_HOME/.claude/skills/example-skill" ]
+[ ! -e "$SANDBOX_HOME/.codex/skills/example-skill" ]
+[ ! -e "$FAKE_HOME/.claude/skills/example-skill" ]
+grep -q '"prompt":"from the sandbox before undeploy"' "$REPO_FEEDBACK"
 
 echo "deploy-skill tests passed"

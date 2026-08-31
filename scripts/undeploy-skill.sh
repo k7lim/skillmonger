@@ -1,22 +1,18 @@
 #!/bin/bash
 # undeploy-skill.sh - Remove deployed skill symlinks and installed copies
 # Inverse of deploy-skill.sh
+#
+# The deploy targets are defined once, in lib/deploy-targets.sh, and this
+# script removes from exactly the places deploy-skill.sh writes to. A deployed
+# copy is where agents write their traces (ADR 0002), so every target is
+# harvested before it is removed -- undeploy must never be the step that
+# destroys a trace deploy would have brought home.
 set -euo pipefail
 
-SKILLMONGER_DIR="$HOME/.local/share/skillmonger/skills"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Tool directory mappings (mirrors deploy-skill.sh)
-TOOL_PATHS=(
-  "claude:$HOME/.claude/skills:.claude/skills"
-  "codex:$HOME/.codex/skills:.codex/skills"
-  "opencode:$HOME/.config/opencode/skills:.opencode/skills"
-  "pi:$HOME/.pi/agent/skills:.pi/skills"
-)
-
-SANDBOX_TOOL_PATHS=(
-  "claude:$HOME/.claude-yolobox/skills"
-  "codex:$HOME/.codex-yolobox/skills"
-)
+# shellcheck source=lib/deploy-targets.sh
+. "$SCRIPT_DIR/lib/deploy-targets.sh"
 
 # Parse arguments
 SKILL_NAME=""
@@ -42,12 +38,14 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: undeploy-skill.sh <skill-name> [options]"
       echo ""
       echo "Options:"
-      echo "  --global          Remove from ~/.local/share/skillmonger/skills/ and"
-      echo "                    remove entries from user-global tool directories"
+      echo "  --global          Remove from the store ($SKILLMONGER_DIR),"
+      echo "                    the user-global tool directories, and the SRT"
+      echo "                    sandbox home ($YOLOBOX_SANDBOX_HOME)"
       echo "  --local <dir>     Remove copies from project tool directories"
       echo "  --tools <list>    Comma-separated tools: claude,codex,opencode,pi (default: all)"
       echo ""
       echo "At least one of --global or --local must be specified."
+      echo "Every copy is harvested (harvest-feedback.sh) before it is removed."
       exit 0
       ;;
     *)
@@ -85,13 +83,25 @@ tool_enabled() {
   [[ ",$TOOLS," == *",$1,"* ]]
 }
 
+# Same contract as deploy-skill.sh: a copy is removed only after its traces
+# are home. A failed harvest aborts before anything is touched.
+harvest_before_removal() {
+  if ! "$SCRIPT_DIR/harvest-feedback.sh" "$SKILL_NAME" --quiet "$@"; then
+    echo "ERROR: Harvest failed for $SKILL_NAME. Refusing to undeploy: the" >&2
+    echo "       deployed copies hold traces that undeploy would destroy." >&2
+    exit 1
+  fi
+}
+
 REMOVED=0
 
 # Global removal
 if [ -n "$DO_GLOBAL" ]; then
+  harvest_before_removal
+
   # Remove links or copies from tool directories.
   for entry in "${TOOL_PATHS[@]}"; do
-    IFS=':' read -r tool global_path local_path <<< "$entry"
+    IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
     if tool_enabled "$tool"; then
       target="$global_path/$SKILL_NAME"
       if [ -L "$target" ] || [ -e "$target" ]; then
@@ -104,12 +114,11 @@ if [ -n "$DO_GLOBAL" ]; then
     fi
   done
 
-  # Remove copies from the separate SRT agent homes. The paths retain their
-  # legacy names until the SRT credential-home migration is completed.
+  # Remove the real copies deploy-skill.sh made in the SRT sandbox home.
   for entry in "${SANDBOX_TOOL_PATHS[@]}"; do
-    IFS=':' read -r tool global_path <<< "$entry"
+    IFS=':' read -r tool sandbox_path <<< "$entry"
     if tool_enabled "$tool"; then
-      target="$global_path/$SKILL_NAME"
+      target="$sandbox_path/$SKILL_NAME"
       if [ -d "$target" ]; then
         rm -rf "$target"
         echo "✓ Removed $target (SRT sandbox)"
@@ -132,8 +141,22 @@ fi
 # Local removal
 if [ -n "$LOCAL_DIR" ]; then
   LOCAL_DIR="$(cd "$LOCAL_DIR" && pwd)"
+
+  # The project's copies are deploy targets the harvester cannot enumerate on
+  # its own, so name them explicitly before removing them.
+  LOCAL_TARGETS=()
   for entry in "${TOOL_PATHS[@]}"; do
-    IFS=':' read -r tool global_path local_path <<< "$entry"
+    IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
+    if tool_enabled "$tool" && [ -d "$LOCAL_DIR/$local_path" ]; then
+      LOCAL_TARGETS+=(--target "$LOCAL_DIR/$local_path")
+    fi
+  done
+  if [ ${#LOCAL_TARGETS[@]} -gt 0 ]; then
+    harvest_before_removal "${LOCAL_TARGETS[@]}"
+  fi
+
+  for entry in "${TOOL_PATHS[@]}"; do
+    IFS=':' read -r tool global_path local_path global_mode <<< "$entry"
     if tool_enabled "$tool"; then
       target="$LOCAL_DIR/$local_path/$SKILL_NAME"
       if [ -L "$target" ] || [ -d "$target" ]; then
