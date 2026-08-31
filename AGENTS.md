@@ -46,9 +46,9 @@ vendor/              # External repos (gitignored content, don't edit)
 |--------|---------|------------|
 | `new-skill.sh` | Create skill in `skills/` | `validate-skill.sh` |
 | `seed-skill.sh` | Capture idea to `seeds/` | nothing |
-| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md` |
-| `skill` | Show current skill status and next step | `~/.skillmonger-state` |
-| `ship-skill.sh` | Move a sandbox skill into `skills/` | `validate-skill.sh` |
+| `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md`, `lib/skill-state.sh` |
+| `skill` | Show current skill status and next step | `~/.skillmonger-state` (parsed as `KEY=VALUE` data via `lib/skill-state.sh`, never sourced) |
+| `ship-skill.sh` | Move a sandbox skill into `skills/` | `validate-skill.sh`, `lib/skill-state.sh` |
 | `validate-skill.sh` | Check structure, frontmatter, and skill format | nothing |
 | `render-epilogue.sh` | Print a skill's format-2 "After Execution" epilogue | skill's CONFIG.yaml |
 | `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |

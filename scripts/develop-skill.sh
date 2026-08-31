@@ -398,15 +398,17 @@ echo "  ✓ Appended After Execution epilogue (render-epilogue.sh)"
 
 # --- Write State ---
 
+# Plain KEY=VALUE lines, read back by `scripts/skill` as data (never sourced).
+# shellcheck source=lib/skill-state.sh
+. "$SCRIPT_DIR/lib/skill-state.sh"
 STATE_FILE="$HOME/.skillmonger-state"
-cat > "$STATE_FILE" << EOF
-SKILL_NAME="$SKILL_NAME"
-SKILL_DIR="$SKILL_DIR"
-LAST_ACTION="scaffolded"
-TIMESTAMP="$(date '+%Y-%m-%d %H:%M')"
-NEXT_STEP="cd $SKILL_DIR && claude \"Read BRIEF.md and build the skill\""
-AFTER_THAT="scripts/ship-skill.sh $SKILL_DIR"
-EOF
+skill_state_save "$STATE_FILE" \
+  "SKILL_NAME=$SKILL_NAME" \
+  "SKILL_DIR=$SKILL_DIR" \
+  "LAST_ACTION=scaffolded" \
+  "TIMESTAMP=$(date '+%Y-%m-%d %H:%M')" \
+  "NEXT_STEP=cd $SKILL_DIR && claude \"Read BRIEF.md and build the skill\"" \
+  "AFTER_THAT=scripts/ship-skill.sh $SKILL_DIR"
 
 # --- Summary ---
 
