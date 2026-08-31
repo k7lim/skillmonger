@@ -59,7 +59,7 @@ vendor/              # External repos (gitignored content, don't edit)
 | `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py` |
 | `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
 | `analyze-feedback.sh` | Harvest, then summarize trace trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files |
-| `compact-memo.sh` | Brief the Maintainer for a compaction pass | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py` |
+| `compact-memo.sh` | Brief the Maintainer for a compaction pass; `--overflow` spills an outgrown wiki into `memo/patterns/` | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py`, `lib/overflow.py` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
 | `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |
 | `check-upstream.sh` | Report upstream/local drift for adopted skills | `scripts/lib/upstream.py` |

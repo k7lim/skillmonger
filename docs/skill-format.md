@@ -97,7 +97,7 @@ skill:
 evaluation:
   mode: programmatic     # programmatic | qualitative | delayed | hybrid
   script: scripts/evaluate.sh   # required for programmatic and hybrid
-  blind: true            # gate runs withhold the wiki (ADR 0003)
+  blind: true            # gate runs withhold the wiki: MEMO.md and memo/ (ADR 0003)
   tolerance: 0.5         # mean-drop tolerance before a run counts as a regression
   runner: claude         # reserved; codex later
   script_emits_outcome: true    # optional, default true
@@ -133,6 +133,9 @@ skills/my-skill/
 ├── CONFIG.yaml           # Metadata & triggers (recommended)
 ├── MEMO.md               # Edge cases log (recommended)
 ├── FEEDBACK.jsonl        # Execution feedback log (auto-created)
+├── memo/                 # Wiki overflow (created only by --overflow)
+│   └── patterns/
+│       └── <slug>.md     # One pattern MEMO.md outgrew
 ├── references/           # Supporting docs (optional)
 └── scripts/              # Deterministic helpers (optional)
     ├── evaluate.sh       # Post-execution scoring (optional)
@@ -219,6 +222,14 @@ three or more failing traces (outcome 1 or 2) have arrived since
 the traces. `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh`
 all decide it in `scripts/lib/compaction.py`, so they cannot disagree.
 
+**Budget fields:** advisory ceilings, in words.
+- `metadata_max`: the SKILL.md frontmatter an agent loads before deciding to run the skill
+- `skill_max`: SKILL.md itself; `validate-skill.sh` warns above 5000 words
+- `memo_max`: MEMO.md. Above it, `compact-memo.sh` offers wiki overflow
+  (below). The block is optional and ten skills omit it; a skill with no
+  `budget.memo_max` is measured against the default **2000**, which is also
+  the value every scaffold writes.
+
 ## MEMO.md (Recommended)
 
 Edge cases and learnings. Loaded on failure or when historical context is needed.
@@ -295,6 +306,53 @@ strategy (CONTEXT.md). Since format 1.2 a pattern has a fixed layout:
 Old free-form entries stay valid. Nothing rewrites existing wikis; entries
 convert as a compaction touches them, and `scripts/compact-memo.sh` flags the
 ones still missing `status` or `evidence`.
+
+### Wiki overflow
+
+Since format 2.1 the wiki is one file until it outgrows one.
+`scripts/compact-memo.sh` measures it on every run and, when MEMO.md is over
+that skill's `budget.memo_max` words **or** holds more than 12 `### ` entries,
+prints the command that spills it:
+
+```bash
+scripts/compact-memo.sh skills/<name>/ --overflow
+```
+
+Nothing is written without that flag, and the flag does nothing while the wiki
+is inside both limits: lower `budget.memo_max` if a smaller wiki has already
+outgrown one file. Overflow is per skill and on demand; no skill is migrated in
+bulk, and no wiki in the repo is over either limit today.
+
+`--overflow` moves each `### ` entry -- the heading and its body, up to the
+next `### `, `## ` or `# ` heading or EOF -- into `memo/patterns/<slug>.md`
+verbatim, and leaves one index line where the entry was:
+
+```markdown
+- [<slug>](memo/patterns/<slug>.md): <status>, <short title>
+```
+
+The slug is the entry's own, taken from a `### <slug>: short title` heading. A
+free-form entry has no slug, so one is derived from the heading text
+(lowercase-with-hyphens) and the run names every slug it derived -- rename
+those while nothing cites them yet. The status is the entry's `- status:`
+line, or `open` when it has none. Anything that is not a `### ` entry stays in
+MEMO.md untouched: `## ` sections, their prose, the Iteration Log, and the
+`---` rules that separate sections.
+
+The move refuses (exit 2) rather than overwrite, when a
+`memo/patterns/<slug>.md` already exists with different content or when two
+entries slug the same. It is otherwise idempotent: a second `--overflow` finds
+no `### ` entries left and writes nothing.
+
+MEMO.md stays the file `loading.on_failure` names, so a failing run still loads
+one file and follows one link, and CONFIG.yaml is not touched. A gate run under
+`evaluation.blind` withholds `memo/` exactly as it withholds MEMO.md, so
+overflowing a wiki cannot change what a gate measures (ADR 0003). The rest of
+the tooling already knows the directory: `validate-skill.sh` reports it as
+optional, `ship-skill.sh`
+carries it, `sync-skill-back.sh` diffs `memo/**/*.md` file by file, and for an
+adopted skill every path under `memo/` classifies as `ours` -- a wiki is
+skillmonger's, never upstream's.
 
 ## FEEDBACK.jsonl (Auto-created)
 

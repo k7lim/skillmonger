@@ -9,7 +9,9 @@
 # skill, the owner skills a pattern might belong to instead.
 #
 # It is a guide, not an editor. Nothing under the skill directory is written
-# except the traces the harvest brings home.
+# except the traces the harvest brings home -- and, when the wiki has outgrown
+# one file and you pass --overflow, the move of its pattern entries into
+# memo/patterns/ (format 2.1). That flag is the one action this script has.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -24,21 +26,30 @@ Prints the compaction brief for one skill's wiki (MEMO.md).
 
 Options:
   --no-harvest   Skip the harvest; read the traces already in the repo
+  --overflow     Move the wiki's \`### \` entries to memo/patterns/<slug>.md,
+                 leaving one index line each in MEMO.md. Only acts when the
+                 wiki is over budget.memo_max words or 12 pattern entries.
   --help         Show this help message
 
 Examples:
   $(basename "$0") skills/yt-dlp/
   $(basename "$0") skills/yt-dlp/ --no-harvest
+  $(basename "$0") skills/yt-dlp/ --overflow
 EOF
 }
 
 SKILL_ARG=""
 NO_HARVEST=""
+OVERFLOW=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --no-harvest)
       NO_HARVEST=1
+      shift
+      ;;
+    --overflow)
+      OVERFLOW=1
       shift
       ;;
     --help|-h)
@@ -100,10 +111,37 @@ if [ -z "$NO_HARVEST" ]; then
 fi
 
 # --- Wiki size ---
+#
+# The wiki is one file until it outgrows one (roadmap 6). overflow.py owns
+# both halves of that: the budget the wiki is measured against here, and the
+# move --overflow performs.
 echo "=== Wiki size ==="
 echo "  Lines: $(wc -l < "$MEMO_FILE" | xargs)"
 echo "  Words: $(wc -w < "$MEMO_FILE" | xargs)"
+if command -v python3 &> /dev/null; then
+  python3 "$SCRIPT_DIR/lib/overflow.py" --skill-dir "$SKILL_DIR" --label "${SKILL_ARG:-.}"
+fi
 echo ""
+
+# --- Wiki overflow ---
+#
+# The one thing this script writes to the wiki, and only on the flag. It stops
+# here afterwards: the brief below describes a MEMO.md that just changed shape,
+# so re-run without --overflow to read it.
+if [ -n "$OVERFLOW" ]; then
+  if ! command -v python3 &> /dev/null; then
+    echo "Error: --overflow needs python3" >&2
+    exit 1
+  fi
+  echo "=== Wiki overflow ==="
+  set +e
+  python3 "$SCRIPT_DIR/lib/overflow.py" --skill-dir "$SKILL_DIR" --label "${SKILL_ARG:-.}" --apply
+  overflow_status=$?
+  set -e
+  echo ""
+  echo "Re-run without --overflow for the compaction brief."
+  exit $overflow_status
+fi
 
 # --- The brief ---
 #
