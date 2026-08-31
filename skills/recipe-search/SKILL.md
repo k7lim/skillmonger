@@ -82,14 +82,16 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate.py <file.json>
+scripts/evaluate.py <file>
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-Script scores 4-5 → self-assess: did recipe match cuisine/dietary/time needs? Adjust down if not.
+Save the recipe JSON first; the evaluator reads it as a file.
+
+Script scores 4-5 → self-assess: did recipe match cuisine/dietary/time needs? Score it lower if not.
 
 Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 

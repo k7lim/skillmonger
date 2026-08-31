@@ -10,7 +10,7 @@ skill:
 evaluation:
   mode: hybrid
   script: scripts/evaluate.py
-  script_usage: scripts/evaluate.py <file.json>
+  script_usage: scripts/evaluate.py <file>
   blind: true
   tolerance: 0.5
   runner: claude

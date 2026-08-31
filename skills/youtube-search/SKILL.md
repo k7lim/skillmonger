@@ -95,7 +95,7 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-**Score >= 4:** Log and proceed.
+**Score >= 4:** proceed without asking.
 **Score < 4:** Ask "Do these results match what you were looking for, or should I refine?" Map: yes=4, partially=3, no=2. On alternate runs, self-assess instead of asking.
 
 **3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this

@@ -75,7 +75,7 @@ score the run yourself.
 
 **User evaluation (alternate runs):** Ask: "Does this critique help you see where your writing sounds AI-generated?" Map: Yes=5, Mostly=4, Somewhat=3, Not really=2, No=1. Record that answer with `"source":"user"`.
 
-On alternate runs, self-assess instead: Does the critique quote specific text? Provide concrete rewrites? Cover the right categories? Map to 1-5.
+On the runs in between, self-assess instead: Does the critique quote specific text? Provide concrete rewrites? Cover the right categories? Map to 1-5.
 
 Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
 are running from, not the skillmonger repo:
