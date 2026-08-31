@@ -5,6 +5,14 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
+# `! cmd` never trips errexit; a negative check has to fail out loud.
+refute() {
+  if "$@"; then
+    echo "expected to fail, but passed: $*" >&2
+    exit 1
+  fi
+}
+
 FAKE_HOME="$TEST_ROOT/home"
 SANDBOX_HOME="$FAKE_HOME/.local/share/yolobox/home"
 # The harvester writes traces back into the repo's skills/; point it at a
@@ -90,7 +98,7 @@ grep -q '"prompt":"from the sandbox"' "$REPO_FEEDBACK"
 grep -q '"prompt":"date-only one"' "$REPO_FEEDBACK"
 grep -q '"prompt":"date-only two"' "$REPO_FEEDBACK"
 # Unparseable lines are skipped, not appended.
-! grep -q 'not json at all' "$REPO_FEEDBACK"
+refute grep -q 'not json at all' "$REPO_FEEDBACK"
 
 # source is normalised on the way in: self -> llm, hybrid+checks -> script.
 python3 - "$REPO_FEEDBACK" <<'PYEOF'
@@ -168,8 +176,78 @@ printf '%s\n' '{"ts":"2026-08-31T12:01:00Z","skill":"example-skill","version":"1
 printf '%s\n' '{"ts":"2026-08-31T12:02:00Z","skill":"example-skill","version":"1.0.0","prompt":"from the sandbox before undeploy","outcome":5,"note":"","source":"script","schema_version":1}' \
   >> "$SANDBOX_HOME/.claude/skills/example-skill/FEEDBACK.jsonl"
 
+# --- --dry-run prints the plan and changes nothing ---
+
+# Everything under the test root, with contents: the fake HOME (store, tool
+# dirs, sandbox home), the project copies and the repo-side skills/ the
+# harvester writes into. A dry run must leave all of it byte-identical.
+tree_state() {
+  find "$TEST_ROOT" \( -type f -o -type l -o -type d \) -print | LC_ALL=C sort
+  find "$TEST_ROOT" -type l -print0 | LC_ALL=C sort -z | xargs -0 -n1 readlink
+  find "$TEST_ROOT" -type f -print0 | LC_ALL=C sort -z | xargs -0 cksum
+}
+BEFORE_STATE="$(tree_state)"
+plan_has() { printf '%s\n' "$PLAN" | grep -q -- "$1"; }
+
+PLAN="$(HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/deploy-skill.sh" \
+  "$SKILL_DIR" --global --local "$LOCAL_PROJECT" --tools claude,codex,pi --dry-run)"
+[ "$(tree_state)" = "$BEFORE_STATE" ]
+# The plan names each target once, with the action deploy would take on it.
+plan_has "^  harvest  $STORE\$"
+plan_has "^  harvest  $FAKE_HOME/.pi/agent/skills/example-skill\$"
+plan_has "^  harvest  $SANDBOX_HOME/.claude/skills/example-skill\$"
+plan_has "^  harvest  $LOCAL_PROJECT/.pi/skills/example-skill\$"
+plan_has "^  remove   $STORE\$"
+plan_has "^  copy     $SKILL_DIR -> $STORE\$"
+plan_has "^  symlink  $FAKE_HOME/.claude/skills/example-skill -> $STORE\$"
+plan_has "^  copy     $STORE -> $FAKE_HOME/.pi/agent/skills/example-skill\$"
+plan_has "^  copy     $STORE -> $SANDBOX_HOME/.codex/skills/example-skill (SRT sandbox)\$"
+plan_has "^  copy     $SKILL_DIR -> $LOCAL_PROJECT/.claude/skills/example-skill\$"
+plan_has "^  copy     $SKILL_DIR -> $LOCAL_PROJECT/.pi/skills/example-skill\$"
+refute plan_has 'opencode'
+# Validation still runs (its ✓ lines are fine); deploy's own markers must not.
+refute plan_has '^✓ \(Installed\|Copied\|Symlinked\|Built\)'
+# A dry run harvests nothing: harvest writes into skills/.
+refute grep -q '"prompt":"from pi before undeploy"' "$REPO_FEEDBACK"
+
+PLAN="$(HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
+  example-skill --global --local "$LOCAL_PROJECT" --tools pi --dry-run)"
+[ "$(tree_state)" = "$BEFORE_STATE" ]
+plan_has "^  harvest  $STORE\$"
+plan_has "^  harvest  $LOCAL_PROJECT/.pi/skills/example-skill\$"
+plan_has "^  remove   $FAKE_HOME/.pi/agent/skills/example-skill\$"
+plan_has "^  remove   $LOCAL_PROJECT/.pi/skills/example-skill\$"
+plan_has "^  remove   $STORE\$"
+# --tools pi: the claude link is harvested (harvest reads every root) but not removed.
+refute plan_has "^  remove   $FAKE_HOME/.claude/skills/example-skill\$"
+refute plan_has '^✓ Removed'
+refute grep -q '"prompt":"from pi before undeploy"' "$REPO_FEEDBACK"
+
+# A target that is not there is listed as skipped, so the plan names every target.
+PLAN="$(HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
+  store-only-skill --global --tools claude --dry-run)"
+[ "$(tree_state)" = "$BEFORE_STATE" ]
+plan_has "^  skip     $FAKE_HOME/.claude/skills/store-only-skill (not found)\$"
+plan_has "^  remove   $FAKE_HOME/.local/share/skillmonger/skills/store-only-skill\$"
+
+# --- Removal is opt-in: no terminal and no --yes means refuse, exit 2 ---
+set +e
 HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
-  example-skill --global --local "$LOCAL_PROJECT" --tools pi >/dev/null
+  example-skill --global --local "$LOCAL_PROJECT" --tools pi </dev/null >/dev/null 2>"$TEST_ROOT/refusal.err"
+STATUS=$?
+set -e
+[ "$STATUS" -eq 2 ]
+grep -q -- '--yes' "$TEST_ROOT/refusal.err"
+rm -f "$TEST_ROOT/refusal.err"
+[ "$(tree_state)" = "$BEFORE_STATE" ]
+[ -d "$FAKE_HOME/.pi/agent/skills/example-skill" ]
+[ -d "$LOCAL_PROJECT/.pi/skills/example-skill" ]
+[ -d "$STORE" ]
+refute grep -q '"prompt":"from pi before undeploy"' "$REPO_FEEDBACK"
+
+# With --yes it removes, and harvests each target first.
+HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
+  example-skill --global --local "$LOCAL_PROJECT" --tools pi --yes </dev/null >/dev/null
 [ ! -e "$FAKE_HOME/.pi/agent/skills/example-skill" ]
 [ ! -e "$LOCAL_PROJECT/.pi/skills/example-skill" ]
 [ ! -e "$STORE" ]
@@ -180,7 +258,7 @@ grep -q '"prompt":"from the local project before undeploy"' "$REPO_FEEDBACK"
 # removes them too, and their traces come home first.
 [ -d "$SANDBOX_HOME/.claude/skills/example-skill" ]
 HOME="$FAKE_HOME" "$PROJECT_ROOT/scripts/undeploy-skill.sh" \
-  example-skill --global >/dev/null
+  example-skill --global -y </dev/null >/dev/null
 [ ! -e "$SANDBOX_HOME/.claude/skills/example-skill" ]
 [ ! -e "$SANDBOX_HOME/.codex/skills/example-skill" ]
 [ ! -e "$FAKE_HOME/.claude/skills/example-skill" ]

@@ -54,7 +54,7 @@ vendor/              # External repos (gitignored content, don't edit)
 | `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |
 | `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline, exit 1 on a regression | `lib/gate.py`, `lib/impact.py`, `log-feedback.sh`, skill's evaluate script, `claude` |
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
-| `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
+| `undeploy-skill.sh` | Remove deployed symlinks and installed copies; harvests first, `--dry-run` plans, `--yes` for non-interactive removal | `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
 | `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py` |
 | `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
