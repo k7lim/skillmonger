@@ -354,7 +354,7 @@ FEEDBACK.jsonl into `skills/<name>/FEEDBACK.jsonl`: existing lines are never
 rewritten, new ones are appended in timestamp order (a trace is new when its
 (skill, ts, content digest) key is unseen, so undated and same-ts runs survive), `source` is normalised
 (`self` -> `llm`, `hybrid` -> `script` when the trace carries `checks` else
-`llm`, missing -> `llm`), `version` is left as written, and unparseable lines
+`llm`, missing -> `llm`), `version` is left as written, and stays as written afterwards: 142 of the 520 traces harvested on 2026-08-30 carry no semver (`analyze-feedback.sh --impact` groups them under `unversioned`), but back-filling would rewrite existing lines, which the append-only rule forbids, and the deployed copy's version at run time is not derivable from this repo's history, so a git-derived value would record a guess as a fact, and unparseable lines
 are skipped with a warning. It is idempotent, and `deploy-skill.sh` runs it
 before it removes a deployed copy. Harvest also derives
 `compaction.iteration_count` from the traces since `last_compaction`, so
