@@ -99,7 +99,7 @@ evaluation:
   script: scripts/evaluate.sh   # required for programmatic and hybrid
   blind: true            # gate runs withhold the wiki: MEMO.md and memo/ (ADR 0003)
   tolerance: 0.5         # mean-drop tolerance before a run counts as a regression
-  runner: claude         # reserved; codex later
+  runner: claude         # the only runner the gate drives (ADR 0004)
   script_emits_outcome: true    # optional, default true
   script_usage: scripts/evaluate.sh <project-dir>   # optional
 ```
@@ -465,7 +465,8 @@ to be scored by. `fixtures/` must hold at least three `*.prompt.md`. Two more
 refusals are declarations the skill already made: `script_emits_outcome: false`
 (the evaluator scores something other than this skill's output, so there is no
 number to compare) and `evaluation.runner` set to anything but `claude`, which
-is reserved. Each is exit 3 with every reason listed at once. Qualitative skills
+is reserved (ADR 0004: `codex exec` was measured as a second runner and
+declined). Each is exit 3 with every reason listed at once. Qualitative skills
 are never gated.
 
 **Fixtures are inputs only.** A `<case>.prompt.md` is the prompt and nothing

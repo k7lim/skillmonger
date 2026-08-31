@@ -315,7 +315,9 @@ schedule until 2.0 has run for a quarter.
 
 1. `evaluation.tolerance` default 0.5 and the one-point per-fixture rule
    are starting values; revisit after ten gate runs.
-2. `codex exec --add-dir` as a second gate runner: reserved field, not
-   built.
+2. `codex exec --add-dir` as a second gate runner: measured 2026-08-31 and
+   declined -- `--add-dir` does not isolate, an isolated `CODEX_HOME` does,
+   and codex scored centers-of-excellence's three fixtures 5/5/5 exactly as
+   claude did. Reserved field, not built. See ADR 0004.
 3. Whether `version` in harvested traces should be back-filled from git
    history when it reads `unknown`; left as written for now.

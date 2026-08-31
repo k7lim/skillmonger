@@ -58,7 +58,8 @@ GATEABLE_MODES = ("programmatic", "hybrid")
 
 # `evaluation.runner` is reserved. Today the only runner the gate knows how to
 # drive is Claude Code; a skill that names another one is refused rather than
-# quietly gated with the wrong tool.
+# quietly gated with the wrong tool. `codex exec` was measured as a second
+# runner and declined: ADR 0004.
 KNOWN_RUNNERS = ("claude",)
 
 MIN_FIXTURES = 3
