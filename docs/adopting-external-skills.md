@@ -113,7 +113,8 @@ scripts/adopt-skill.sh https://github.com/LaurentiuGabriel/learnscape \
 cd ~/Development/sandbox/skills/isometric-explainer
 # ... adapt SKILL.md, add CONFIG.yaml/MEMO.md/evaluate, write OVERLAY.md ...
 
-# 3. Ship and deploy as normal.
+# 3. Ship and deploy as normal. Without a terminal, ship-skill.sh copies
+#    assets/ and SOURCE.md by default; --yes also overwrites an existing skill.
 cd ~/Development/host/skillmonger
 scripts/ship-skill.sh ~/Development/sandbox/skills/isometric-explainer
 scripts/deploy-skill.sh isometric-explainer

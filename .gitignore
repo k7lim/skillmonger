@@ -26,6 +26,8 @@ __pycache__/
 .venv/
 venv/
 .skill-backups/
+# ship-skill.sh staging area; a leftover here is a killed run, never a skill
+.skill-staging/
 
 # sync-upstream.sh review scratch
 .upstream-review/

@@ -2,6 +2,9 @@
 # validate-skill.sh - Validates skill structure per agentskills.io + tri-file extensions
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 SKILL_DIR="${1:-.}"
 
 # Resolve to absolute path
@@ -237,6 +240,26 @@ fi
 if [ -d "$SKILL_DIR/scripts" ]; then
   script_count=$(find "$SKILL_DIR/scripts" -type f | wc -l | xargs)
   ok "scripts/ directory with $script_count file(s)"
+fi
+
+# Check 7: an adopted skill that lost its assets/ on the way in. The
+# standard files ship on their own; assets/ is an "extra" and a half-shipped
+# adoption is one whose upstream has it while the skill does not
+# (skillmonger-j9f). Only checked when the vendored upstream is present.
+if [ -f "$SKILL_DIR/CONFIG.yaml" ] && [ ! -d "$SKILL_DIR/assets" ]; then
+  up_vendor="$(read_config_value "$SKILL_DIR/CONFIG.yaml" upstream.vendor | head -1 | xargs || true)"
+  up_path="$(read_config_value "$SKILL_DIR/CONFIG.yaml" upstream.path | head -1 | xargs || true)"
+  up_commit="$(read_config_value "$SKILL_DIR/CONFIG.yaml" upstream.commit | head -1 | xargs || true)"
+  if [ -n "$up_vendor" ] && [ -n "$up_path" ]; then
+    case "$up_vendor" in
+      /*) vendor_dir="$up_vendor" ;;
+      *) vendor_dir="$PROJECT_ROOT/$up_vendor" ;;
+    esac
+    if [ -d "$vendor_dir" ] && command -v git &> /dev/null \
+      && git -C "$vendor_dir" cat-file -e "${up_commit:-HEAD}:${up_path%/}/assets" 2>/dev/null; then
+      warn "upstream $up_path has assets/ but this skill does not; ship-skill.sh may have stopped before copying it (re-ship with --yes, or copy assets/ from $vendor_dir)"
+    fi
+  fi
 fi
 
 # Summary

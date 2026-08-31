@@ -254,9 +254,12 @@ reclassifies it as `adapted` by observing reality. Then write the reason into
 - Skip `README.md` when listing seeds
 - A seed is "started" if a matching directory exists in sandbox or skills
 - `develop-skill.sh` is interactive - it prompts for seed selection and one-liner
-- `ship-skill.sh` is also interactive: it prompts before copying anything beyond
-  the standard files, which for an adopted skill means `assets/` and `SOURCE.md`.
-  Do not run it non-interactively and assume it finished.
+- `ship-skill.sh` prompts before copying anything beyond the standard files,
+  which for an adopted skill means `assets/` and `SOURCE.md`. Without a
+  terminal it does not prompt: extras ship by default, an existing skill is
+  not overwritten unless `--yes`, and the copy is staged and moved into
+  `skills/` in one step, so an aborted run ships nothing. Check its summary
+  for a "Not shipped" list.
 - The sandbox is disposable - real source lives in `skills/`
 - An adopted skill is any skill with an `upstream:` block in `CONFIG.yaml`
 - `vendor/` is gitignored and read-only. Never edit it, and never "fix" an
