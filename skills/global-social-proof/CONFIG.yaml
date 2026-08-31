@@ -39,4 +39,4 @@ dependencies:
 
 compaction:
   cycle_threshold: 15
-  iteration_count: 41
+  iteration_count: 43

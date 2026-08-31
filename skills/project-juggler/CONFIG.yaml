@@ -49,7 +49,7 @@ loading:
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 34
+  iteration_count: 35
 budget:
   metadata_max: 100
   skill_max: 5000
