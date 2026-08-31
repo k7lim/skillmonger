@@ -4,9 +4,8 @@ skill:
   created: 2026-08-10
   updated: 2026-08-10
   author: kevin
-
 upstream:
-  repo: "https://github.com/mattpocock/skills"
+  repo: https://github.com/mattpocock/skills
   vendor: vendor/mattpocock-skills
   path: skills/productivity/wait-what
   ref: v1.2.3
@@ -14,30 +13,26 @@ upstream:
   license: MIT License
   synced: 2026-08-10
   status: tracked
-
 triggers:
   phrases:
-    - "that didn't land"
-    - "re-pitch that"
-    - "wait what"
-    - "say that again differently"
+  - that didn't land
+  - re-pitch that
+  - wait what
+  - say that again differently
   keywords:
-    - re-pitch
-    - clarify
-    - confusing
-    - restate
-
+  - re-pitch
+  - clarify
+  - confusing
+  - restate
 loading:
   primary: SKILL.md
   on_failure: MEMO.md
   always_load:
-    - CONFIG.yaml
-
+  - CONFIG.yaml
 compaction:
   cycle_threshold: 15
   last_compaction: null
-  iteration_count: 0
-
+  iteration_count: 1
 budget:
   metadata_max: 100
   skill_max: 5000
