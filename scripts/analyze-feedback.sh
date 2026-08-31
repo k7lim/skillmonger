@@ -16,6 +16,7 @@ Options:
   --skill NAME    Analyze only the named skill
   --version VER   Filter to a specific version
   --export        Output raw JSONL (all entries, for piping to jq)
+  --impact [NAME] Group outcomes by the skill version that produced them
   --no-harvest    Skip the harvest and read skills/ as it stands
   --help          Show this help message
 
@@ -26,6 +27,7 @@ last deploy happened to leave behind. The harvest reports on stderr.
 Examples:
   $(basename "$0")                              # summary of all skills
   $(basename "$0") --skill centers-of-excellence # one skill detail
+  $(basename "$0") --impact project-juggler     # did the 1.1.0 edit help?
   $(basename "$0") --export | jq '.outcome'     # raw data pipeline
 EOF
 }
@@ -33,6 +35,7 @@ EOF
 FILTER_SKILL=""
 FILTER_VERSION=""
 EXPORT_MODE=false
+IMPACT_MODE=false
 RUN_HARVEST=true
 
 while [[ $# -gt 0 ]]; do
@@ -47,6 +50,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --export)
       EXPORT_MODE=true
+      shift
+      ;;
+    --impact)
+      IMPACT_MODE=true
+      # The skill name is optional; without one, every skill with traces.
+      if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then
+        FILTER_SKILL="$2"
+        shift
+      fi
       shift
       ;;
     --no-harvest)
@@ -82,6 +94,25 @@ if [ "$RUN_HARVEST" = true ] && [ -x "$SCRIPT_DIR/harvest-feedback.sh" ]; then
   if ! "$SCRIPT_DIR/harvest-feedback.sh" "${harvest_args[@]}" >&2; then
     echo "Warning: harvest failed; reporting the traces already in skills/." >&2
   fi
+fi
+
+# --- Impact mode ---
+#
+# Impact is the change in outcomes from one skill version to the next, and
+# every trace already names the version it ran against, so it is computed here
+# and never stored (CONTEXT.md: Impact). scripts/lib/impact.py owns the
+# grouping so gate-skill.sh can import it for a baseline.
+
+if [ "$IMPACT_MODE" = true ]; then
+  if ! command -v python3 &> /dev/null; then
+    echo "Error: python3 is required for --impact (JSON parsing)." >&2
+    exit 2
+  fi
+  impact_args=(--skills-dir "$SKILLS_DIR")
+  if [ -n "$FILTER_SKILL" ]; then
+    impact_args+=("$FILTER_SKILL")
+  fi
+  exec python3 "$SCRIPT_DIR/lib/impact.py" "${impact_args[@]}"
 fi
 
 # --- Collect feedback files ---

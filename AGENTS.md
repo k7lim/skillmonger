@@ -51,7 +51,7 @@ vendor/              # External repos (gitignored content, don't edit)
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
 | `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml, `lib/compaction.py` |
 | `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
-| `analyze-feedback.sh` | Harvest, then summarize feedback trends | `harvest-feedback.sh`, skill FEEDBACK.jsonl files |
+| `analyze-feedback.sh` | Harvest, then summarize feedback trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files |
 | `compact-memo.sh` | Print the Maintainer's brief for one skill's MEMO.md | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
 | `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |

@@ -360,6 +360,19 @@ before it removes a deployed copy. Harvest also derives
 `compaction.iteration_count` from the traces since `last_compaction`, so
 nothing has to increment it by hand.
 
+**Impact:** `scripts/analyze-feedback.sh --impact [skill]` answers "did that
+edit help?" by grouping a skill's traces by the `version` that produced them --
+one row per version with n, mean outcome, failing count (outcome 1-2) and the
+first and last trace, oldest version first. Impact is always computed from the
+traces and never recorded; there is no impact file. Gate traces (`gate: true`)
+are listed separately, per fixture, because a blind run against a fixture is
+not a run somebody asked for. Traces whose `version` is not semver (`unknown`,
+`1`, `n/a`, empty, missing) are grouped under `unversioned` rather than
+dropped, a timestamp is read from `ts`, then `date`, then `timestamp`, and a
+trace carrying no `outcome` counts in n but not in the mean. The grouping lives
+in `scripts/lib/impact.py` (`group_by_version`, `gate_rows`), which
+`python3 scripts/lib/impact.py --self-test` exercises.
+
 **Source reliability:** `script` > `user` > `llm`. Script ratings are ground truth. LLM ratings bias toward 4-5 but relative trends across versions are valid. User ratings are authoritative overrides.
 
 **Feedback patterns:** Not all skills can be scored the same way. Choose the pattern that fits:
