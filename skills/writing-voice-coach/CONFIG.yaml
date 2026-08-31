@@ -8,8 +8,10 @@ skill:
   updated: 2026-02-03
 
 evaluation:
-  mode: hybrid
+  mode: programmatic
   script: scripts/evaluate.py
+  script_usage: 'echo "$ORIGINAL_TEXT" | python3 scripts/evaluate.py'
+  script_emits_outcome: false
   blind: true
   tolerance: 0.5
   runner: claude

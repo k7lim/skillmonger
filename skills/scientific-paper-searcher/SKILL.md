@@ -282,9 +282,7 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-1. Run `echo "$OUTPUT" | ./scripts/evaluate.sh` — logs the programmatic score.
-2. Ask user: "Were these papers relevant to your research question?" Map answer to 1-5 (`"source":"user"`).
-3.
+Ask user: "Were these papers relevant to your research question?" Map answer to 1-5 (`"source":"user"`).
 
 Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 

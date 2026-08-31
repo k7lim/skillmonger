@@ -172,44 +172,27 @@ Each of these cost someone an afternoon. The references explain them properly.
 
 ## After Execution
 
-Two things are worth recording about this run: what the evaluator can check,
-and what only a person can judge.
-
-**1. Run the evaluator.**
-
 Run this skill's evaluator on the output you just produced:
-
-```bash
-scripts/evaluate.sh   # takes the output on stdin, or as its first argument
-```
-
-It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
-
-**2. Ask, then judge.**
-
-This skill has a deterministic evaluator. Run it against the explainer you built:
 
 ```bash
 scripts/evaluate.sh <project-dir>
 ```
 
-It syntax-checks every JS file, serves the project, drives `scripts/smoke.mjs`
-through every station, and scores the result. Use the JSON it returns.
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
-If Playwright is missing, the evaluator caps the outcome at 3 and says so in the
-note — a template that only passed `node --check` has not been verified, and the
-feedback log should not pretend otherwise.
+Copy its `outcome`, `note` and `checks` straight through — do not re-score
+them yourself.
 
-Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
-
-**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
-skill directory — the copy you are running from, not the skillmonger repo:
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
 
 ```json
 {"ts":"<UTC ISO 8601>","skill":"isometric-explainer","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
-{"ts":"<UTC ISO 8601>","skill":"isometric-explainer","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
 ```
 
-Use `"source":"llm"` on the second line when you judged the run yourself
-instead of asking. Drop `session` if you do not know this session's id. Those
-lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+If the evaluator cannot run, say why in `note`, score the run yourself on the
+standard scale (1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent), and set
+`"source":"llm"`.

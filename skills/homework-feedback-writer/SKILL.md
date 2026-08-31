@@ -75,12 +75,9 @@ It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-**Hybrid feedback approach:**
+If the score is below 4, fix the issues and re-run until the score is 4 or better.
 
-1. Run `scripts/evaluate.sh` on the feedback you generated
-2. If score < 4, fix issues and re-run until score >= 4
-3. "Would you send this feedback to the student as-is?" Map: Yes=5, With minor edits=4, Needs work=3, No=2
-4. On even iterations, self-assess against the rules table above
+On alternate runs, ask: "Would you send this feedback to the student as-is?" Map: Yes=5, With minor edits=4, Needs work=3, No=2. On the runs in between, self-assess against the rules table above.
 
 **3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
 skill directory — the copy you are running from, not the skillmonger repo:

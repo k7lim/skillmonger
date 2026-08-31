@@ -77,24 +77,12 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate.sh   # takes the output on stdin, or as its first argument
+scripts/evaluate.sh <epub> <outdir>
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
-
-**Hybrid**: script + qualitative.
-
-### 1. Run Evaluator
-
-```bash
-./scripts/evaluate.sh "<epub_path>" "<output_dir>"
-```
-
-Checks size sanity (output ≤ input) and structure (has .md files).
-
-### 2. Ask User
 
 "Does the Markdown preserve the content you expected?"
 

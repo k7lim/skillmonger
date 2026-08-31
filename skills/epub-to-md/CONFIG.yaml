@@ -11,6 +11,7 @@ skill:
 evaluation:
   mode: hybrid
   script: scripts/evaluate.sh
+  script_usage: scripts/evaluate.sh <epub> <outdir>
   blind: true
   tolerance: 0.5
   runner: claude

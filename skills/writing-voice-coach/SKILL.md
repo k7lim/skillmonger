@@ -61,39 +61,28 @@ If clean: "This reads human. No AI tells detected."
 
 ## After Execution
 
-Two things are worth recording about this run: what the evaluator can check,
-and what only a person can judge.
-
-**1. Run the evaluator.**
-
 Run this skill's evaluator on the output you just produced:
-
-```bash
-scripts/evaluate.py   # takes the output on stdin, or as its first argument
-```
-
-It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
-
-**2. Ask, then judge.**
-
-**Script evaluation:** Run `scripts/evaluate.py` on the original text:
 
 ```bash
 echo "$ORIGINAL_TEXT" | python3 scripts/evaluate.py
 ```
 
-**User evaluation (alternate runs):** Ask: "Does this critique help you see where your writing sounds AI-generated?" Map: Yes=5, Mostly=4, Somewhat=3, Not really=2, No=1.
+It prints a JSON report of what it checked.
+
+`CONFIG.yaml` marks this evaluator as not producing the run's `outcome`
+(`evaluation.script_emits_outcome: false`), so read its report as evidence and
+score the run yourself.
+
+**User evaluation (alternate runs):** Ask: "Does this critique help you see where your writing sounds AI-generated?" Map: Yes=5, Mostly=4, Somewhat=3, Not really=2, No=1. Record that answer with `"source":"user"`.
 
 On alternate runs, self-assess instead: Does the critique quote specific text? Provide concrete rewrites? Cover the right categories? Map to 1-5.
 
-**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
-skill directory — the copy you are running from, not the skillmonger repo:
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<UTC ISO 8601>","skill":"writing-voice-coach","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
-{"ts":"<UTC ISO 8601>","skill":"writing-voice-coach","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"writing-voice-coach","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
 
-Use `"source":"llm"` on the second line when you judged the run yourself
-instead of asking. Drop `session` if you do not know this session's id. Those
-lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.

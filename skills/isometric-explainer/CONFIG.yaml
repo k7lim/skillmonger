@@ -7,8 +7,9 @@ skill:
   author: kevin
 
 evaluation:
-  mode: hybrid
+  mode: programmatic
   script: scripts/evaluate.sh
+  script_usage: scripts/evaluate.sh <project-dir>
   blind: true
   tolerance: 0.5
   runner: claude

@@ -85,14 +85,13 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate.sh   # takes the output on stdin, or as its first argument
+scripts/evaluate.sh <workflow-log>
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
 
 **2. Ask, then judge.**
 
-**Hybrid feedback:** Run `scripts/evaluate.sh` with a log of the session, then ask:
 "Did the results match what you were looking for? Any videos missed or misranked?"
 
 Map the answer: yes as-is = 5, minor tweaks = 4, significant gaps = 3, mostly wrong = 2, failed = 1.
