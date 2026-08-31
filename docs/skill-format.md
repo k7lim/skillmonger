@@ -160,7 +160,8 @@ Append-only log of execution outcomes. One JSON object per line.
 appends the trace there, not here — deployed copies cannot reach this repo
 (ADR 0002). `scripts/harvest-feedback.sh [skill]` unions every deployed copy's
 FEEDBACK.jsonl into `skills/<name>/FEEDBACK.jsonl`: existing lines are never
-rewritten, new ones are appended in timestamp order, `source` is normalised
+rewritten, new ones are appended in timestamp order (a trace is new when its
+(skill, ts, content digest) key is unseen, so undated and same-ts runs survive), `source` is normalised
 (`self` -> `llm`, `hybrid` -> `script` when the trace carries `checks` else
 `llm`, missing -> `llm`), `version` is left as written, and unparseable lines
 are skipped with a warning. It is idempotent, and `deploy-skill.sh` runs it
