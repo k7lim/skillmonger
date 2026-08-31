@@ -150,10 +150,15 @@ loop not closed; 3=relayed `pj next` output with light verification;
 2=unpaginated or unscoped read led to a wrong picture; 1=wrote annotations the
 user did not ask for, or mis-set a `blocked:` note.
 
-Append one JSON line to `FEEDBACK.jsonl` in this skill directory:
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<UTC ISO 8601>","skill":"project-portfolio","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"project-portfolio","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
 
-Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

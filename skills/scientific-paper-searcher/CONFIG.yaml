@@ -2,10 +2,18 @@
 
 skill:
   name: scientific-paper-searcher
+  format: 2
   version: 2.0.0
   created: 2026-01-29
   updated: 2026-02-07
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

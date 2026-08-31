@@ -84,11 +84,31 @@ If json3 parsing issues arise, see `references/json3-format.md` for the subtitle
 
 ## After Execution
 
-Run `echo "$OUTPUT" | scripts/evaluate.sh` and use the score. On alternate runs, ask: "Did these timestamps point to the right moments?" Map: exactly=5, mostly=4, some=3, mostly wrong=2, useless=1.
+Two things are worth recording about this run: what the evaluator can check,
+and what only a person can judge.
 
-Log to `FEEDBACK.jsonl`:
-```json
-{"ts":"<ISO 8601>","skill":"youtube-clip","version":"0.1.0","prompt":"<request>","outcome":<1-5>,"note":"...","source":"script|user|llm","schema_version":1}
+**1. Run the evaluator.**
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+scripts/evaluate.sh   # takes the output on stdin, or as its first argument
 ```
 
-Increment `iteration_count` in `CONFIG.yaml`.
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+**2. Ask, then judge.**
+
+Run `echo "$OUTPUT" | scripts/evaluate.sh` and use the score. On alternate runs, ask: "Did these timestamps point to the right moments?" Map: exactly=5, mostly=4, some=3, mostly wrong=2, useless=1.
+
+**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
+skill directory — the copy you are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"youtube-clip","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"youtube-clip","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
+```
+
+Use `"source":"llm"` on the second line when you judged the run yourself
+instead of asking. Drop `session` if you do not know this session's id. Those
+lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.

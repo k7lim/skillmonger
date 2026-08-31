@@ -2,10 +2,17 @@
 
 skill:
   name: clawdbot-security-healthcheck
+  format: 2
   version: 1.0.0
   created: 2026-01-26
   updated: 2026-01-26
   author: kevin
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases: []

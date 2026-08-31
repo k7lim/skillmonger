@@ -85,4 +85,15 @@ Self-assess: Did the review separate Standards from Spec, cite concrete files or
 
 Map: 5=clear independent findings with citations, 4=useful review with minor gaps, 3=partial review, 2=mostly summary, 1=missed obvious risks.
 
-Append to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"review","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

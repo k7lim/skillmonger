@@ -140,6 +140,21 @@ Use deterministic scripts in this skill for sensing and evaluation. Keep judgmen
 
 ## After Execution
 
+Two things are worth recording about this run: what the evaluator can check,
+and what only a person can judge.
+
+**1. Run the evaluator.**
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+scripts/evaluate.sh   # takes the output on stdin, or as its first argument
+```
+
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+**2. Ask, then judge.**
+
 Self-assess against these criteria:
 
 - Did you preserve all user work?
@@ -152,4 +167,14 @@ If `scripts/evaluate.sh` exists, pipe the final report into it and use its JSON 
 
 Map: 5=clean atomic commits, verified, remote state handled; 4=good commit trail with minor residuals; 3=work preserved but grouping or verification was partial; 2=mostly inspection with little cleanup; 1=lost work, mixed unrelated changes, or misreported state.
 
-Append one JSON line to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
+skill directory — the copy you are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"git-housekeeping","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"git-housekeeping","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
+```
+
+Use `"source":"llm"` on the second line when you judged the run yourself
+instead of asking. Drop `session` if you do not know this session's id. Those
+lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.

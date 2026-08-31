@@ -256,7 +256,20 @@ Guide the user to assemble manually:
 
 ## After Execution
 
-After completing the skill output, score and log feedback using the hybrid pattern: structural evaluation + qualitative check.
+Two things are worth recording about this run: what the evaluator can check,
+and what only a person can judge.
+
+**1. Run the evaluator.**
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+scripts/evaluate.sh   # takes the output on stdin, or as its first argument
+```
+
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+**2. Ask, then judge.**
 
 ### Step 1: Structural Score
 
@@ -278,18 +291,14 @@ Map the response: yes = 5, mostly = 4, some issues = 3, no = 2.
 
 **On other runs**, self-assess against these criteria: chunks in expected range, prompts include realism markers and action clusters, post-production plan references remotion. Use the same 1-5 scale.
 
-### Step 3: Log Feedback
-
-Append one JSON line to `FEEDBACK.jsonl` in this skill directory:
+**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
+skill directory — the copy you are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<UTC ISO 8601>","skill":"ai-talking-heads","version":"<from CONFIG.yaml>","prompt":"<user's original request>","structural":<1-5>,"qualitative":<1-5>,"outcome":<average, rounded>,"note":"<brief note if not 4>","source":"user","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"ai-talking-heads","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"ai-talking-heads","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
 ```
 
-Set `"source":"user"` when the qualitative score came from the user, or `"source":"llm"` when self-assessed.
-
-**Alternative:** Run `log-feedback.sh` from the project root to log feedback interactively.
-
-### Step 4: Increment Iteration Count
-
-Increment `iteration_count` under `compaction` in `CONFIG.yaml`.
+Use `"source":"llm"` on the second line when you judged the run yourself
+instead of asking. Drop `session` if you do not know this session's id. Those
+lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.

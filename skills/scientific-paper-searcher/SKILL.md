@@ -267,10 +267,35 @@ Response JSON: `{"message": {"items": [{"DOI": "...", "title": [...], "author": 
 
 ## After Execution
 
+Two things are worth recording about this run: what the evaluator can check,
+and what only a person can judge.
+
+**1. Run the evaluator.**
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+scripts/evaluate.sh   # takes the output on stdin, or as its first argument
+```
+
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+**2. Ask, then judge.**
+
 1. Run `echo "$OUTPUT" | ./scripts/evaluate.sh` — logs the programmatic score.
 2. Ask user: "Were these papers relevant to your research question?" Map answer to 1-5 (`"source":"user"`).
-3. Append both entries to `FEEDBACK.jsonl`:
+3.
+
+Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
+
+**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
+skill directory — the copy you are running from, not the skillmonger repo:
+
 ```json
-{"ts":"<ISO8601>","skill":"scientific-paper-searcher","version":"2.0.0","prompt":"<query>","outcome":<1-5>,"note":"","source":"script|user","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"scientific-paper-searcher","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"scientific-paper-searcher","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
 ```
-4. Increment `iteration_count` in `CONFIG.yaml`.
+
+Use `"source":"llm"` on the second line when you judged the run yourself
+instead of asking. Drop `session` if you do not know this session's id. Those
+lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.

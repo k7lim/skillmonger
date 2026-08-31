@@ -1,9 +1,16 @@
 skill:
   name: agent-cli-playbook
+  format: 2
   version: 1.0.0
   created: 2026-06-03
   updated: 2026-06-03
   author: kevin
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

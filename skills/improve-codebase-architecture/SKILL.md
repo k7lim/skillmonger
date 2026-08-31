@@ -88,4 +88,15 @@ Self-assess: Did the report identify real architecture friction, use the project
 
 Map: 5=actionable top recommendation with strong evidence, 4=useful candidates with minor gaps, 3=some plausible ideas, 2=generic refactor advice, 1=misread the architecture.
 
-Append to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"improve-codebase-architecture","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

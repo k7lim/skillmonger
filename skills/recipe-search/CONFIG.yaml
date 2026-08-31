@@ -2,9 +2,17 @@
 
 skill:
   name: recipe-search
+  format: 2
   version: 0.2.0
   created: 2026-02-07
   updated: 2026-02-08
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.py
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

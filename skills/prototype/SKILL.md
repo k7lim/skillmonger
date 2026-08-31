@@ -37,4 +37,15 @@ Self-assess: Did the prototype answer the intended question quickly, stay clearl
 
 Map: 5=question answered and cleanup path clear, 4=useful prototype with minor roughness, 3=ran but decision is fuzzy, 2=overbuilt or misplaced, 1=did not answer the question.
 
-Append to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"prototype","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

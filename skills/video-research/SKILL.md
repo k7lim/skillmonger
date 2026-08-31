@@ -100,8 +100,17 @@ For scaffold and contract changes, self-assess whether:
 - `check-prereqs.sh` exits 0 and reports required/optional tools.
 - No live provider calls were implemented before the contract is approved.
 
-Log feedback with:
+Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 
-```bash
-scripts/log-feedback.sh video-research --outcome <1-5> --prompt "<brief prompt>" --source llm
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"video-research","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

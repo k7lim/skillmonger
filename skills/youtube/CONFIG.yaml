@@ -1,5 +1,6 @@
 skill:
   name: youtube
+  format: 2
   description: >
     Use this skill when the user wants to chain YouTube operations: find videos
     then download them, find videos then extract clips or timestamps, or do bulk
@@ -11,6 +12,13 @@ skill:
   created: 2026-04-19
   updated: 2026-08-16
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

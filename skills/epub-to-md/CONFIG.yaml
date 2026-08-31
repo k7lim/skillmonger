@@ -2,10 +2,18 @@
 
 skill:
   name: epub-to-md
+  format: 2
   version: 0.1.0
   created: 2026-02-02
   updated: 2026-02-02
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

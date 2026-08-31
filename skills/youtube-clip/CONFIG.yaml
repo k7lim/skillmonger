@@ -2,10 +2,18 @@
 
 skill:
   name: youtube-clip
+  format: 2
   version: 0.2.1
   created: 2026-04-19
   updated: 2026-08-16
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 description: >
   Use this skill when the user wants to search inside a YouTube video transcript,

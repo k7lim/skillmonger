@@ -1,9 +1,16 @@
 skill:
   name: to-issues
+  format: 2
   version: 1.0.0
   created: 2026-05-26
   updated: 2026-05-26
   author: kevin
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 upstream:
   repo: "https://github.com/mattpocock/skills"

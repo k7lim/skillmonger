@@ -56,4 +56,15 @@ Self-assess: Did terse mode reduce tokens while preserving technical accuracy an
 
 Map: 5=accurate and materially shorter, 4=short and clear with minor roughness, 3=usable but lost some nuance, 2=confusing or too terse, 1=unsafe or materially wrong.
 
-Append to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
+```json
+{"ts":"<UTC ISO 8601>","skill":"caveman","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
+```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

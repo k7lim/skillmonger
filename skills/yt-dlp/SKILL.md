@@ -147,18 +147,17 @@ scripts/run -t sleep \
 
 ## After Execution
 
-After completing the skill output, log feedback to track quality over time.
+Self-assess this run on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 
-**Priority cascade:**
-1. If `scripts/evaluate.sh` exists in this skill directory, run it and use the JSON result
-2. Otherwise, self-assess using the scale below
-
-**Self-assessment scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
-
-**To log feedback**, append one JSON line to `FEEDBACK.jsonl` in this skill directory:
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<UTC ISO 8601>","skill":"yt-dlp","version":"<from CONFIG.yaml>","prompt":"<user's original request>","outcome":<1-5>,"note":"<brief note if not 4>","source":"llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"yt-dlp","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
 
-Then increment `iteration_count` under `compaction` in `CONFIG.yaml`.
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

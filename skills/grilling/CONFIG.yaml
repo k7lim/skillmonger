@@ -1,9 +1,16 @@
 skill:
   name: grilling
+  format: 2
   version: 0.1.0
   created: 2026-08-10
   updated: 2026-08-10
   author: kevin
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 upstream:
   repo: "https://github.com/mattpocock/skills"

@@ -2,10 +2,18 @@
 
 skill:
   name: github-search
+  format: 2
   version: 1.0.0
   created: 2026-01-28
   updated: 2026-01-28
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

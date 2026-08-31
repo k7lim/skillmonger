@@ -1,7 +1,14 @@
 skill:
   name: remotion
+  format: 2
   version: 1.0.0
   source: https://github.com/remotion-dev/remotion/tree/main/packages/skills/skills/remotion
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 upstream:
   repo: "https://github.com/remotion-dev/remotion"

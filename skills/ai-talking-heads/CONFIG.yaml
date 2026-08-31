@@ -1,9 +1,17 @@
 skill:
   name: ai-talking-heads
+  format: 2
   version: 1.1.0
   created: 2026-01-27
   updated: 2026-01-28
   author: kevin
+
+evaluation:
+  mode: hybrid
+  script: scripts/evaluate.sh
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

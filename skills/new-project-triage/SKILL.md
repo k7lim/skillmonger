@@ -105,10 +105,17 @@ Example:
 
 Self-assess whether the skill made a clear placement decision, created the directory, preserved the original notes, and reported the created path.
 
-Log to `FEEDBACK.jsonl`:
+Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
+
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<ISO>","skill":"new-project-triage","version":"<CONFIG.yaml>","prompt":"<request>","outcome":<1-5>,"source":"llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"new-project-triage","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
 
-Increment `iteration_count` in `CONFIG.yaml`.
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

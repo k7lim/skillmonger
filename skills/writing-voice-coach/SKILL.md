@@ -61,6 +61,21 @@ If clean: "This reads human. No AI tells detected."
 
 ## After Execution
 
+Two things are worth recording about this run: what the evaluator can check,
+and what only a person can judge.
+
+**1. Run the evaluator.**
+
+Run this skill's evaluator on the output you just produced:
+
+```bash
+scripts/evaluate.py   # takes the output on stdin, or as its first argument
+```
+
+It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
+
+**2. Ask, then judge.**
+
 **Script evaluation:** Run `scripts/evaluate.py` on the original text:
 
 ```bash
@@ -71,10 +86,14 @@ echo "$ORIGINAL_TEXT" | python3 scripts/evaluate.py
 
 On alternate runs, self-assess instead: Does the critique quote specific text? Provide concrete rewrites? Cover the right categories? Map to 1-5.
 
-**Log both** to `FEEDBACK.jsonl`:
+**3. Record both.** Append one JSON line per source to `FEEDBACK.jsonl` in this
+skill directory — the copy you are running from, not the skillmonger repo:
 
 ```json
-{"ts":"<ISO 8601>","skill":"writing-voice-coach","version":"0.1.0","prompt":"<request>","outcome":<1-5>,"note":"<summary>","source":"script|user|llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"writing-voice-coach","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<the evaluator's outcome>,"note":"<the evaluator's note>","checks":<the evaluator's checks object>,"source":"script","session":"<this session's id>","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"writing-voice-coach","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"user","session":"<this session's id>","schema_version":1}
 ```
 
-Increment `iteration_count` in `CONFIG.yaml`.
+Use `"source":"llm"` on the second line when you judged the run yourself
+instead of asking. Drop `session` if you do not know this session's id. Those
+lines are the whole record: nothing in `CONFIG.yaml` is edited by a run.
