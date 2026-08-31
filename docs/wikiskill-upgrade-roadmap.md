@@ -258,8 +258,11 @@ skillmonger.
 1. Refuse to run unless `fixtures/` holds at least three `*.prompt.md`.
 2. Copy the skill to a temp dir; delete `MEMO.md`, `memo/`, and the
    `loading.on_failure` key.
-3. For each fixture run `claude -p --bare --plugin-dir <tmp>` on the
-   prompt, pipe the output to the evaluate script, and log a gate trace
+3. For each fixture run the skill through `claude -p --plugin-dir <tmp>`
+   as `/<plugin>:<skill> <prompt>` (measured 2026-08-30: `--bare` cannot
+   authenticate without `ANTHROPIC_API_KEY`, and `--add-dir` lets the
+   deployed copy shadow the temp one; the plugin namespace is the
+   isolation), pipe the output to the evaluate script, and log a gate trace
    (`source: script`, `gate: true`, `fixture: <name>`, `version`) into the
    repo's `FEEDBACK.jsonl`.
 4. Baseline = gate traces for the same fixtures at the previous version
