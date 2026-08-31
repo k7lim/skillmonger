@@ -6,9 +6,13 @@ argument-hint: "What will the next session be used for?"
 
 Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save to the temporary directory of the user's OS - not the current workspace.
 
+Lead with the single next action and with what the next agent must not do: traps that already cost time, work not to redo, artifacts not to touch, and why. That is the content no other artifact holds.
+
 Include a "suggested skills" section in the document, which suggests skills that the agent should invoke.
 
-Do not duplicate content already captured in other artifacts (PRDs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
+Do not duplicate content already captured in other artifacts (PRDs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead. Use absolute paths a fresh session can open; a session scratchpad or a pasted-image path dies with the session, so copy anything only it holds next to the handoff before referencing it.
+
+Say which facts this session verified and which it inferred or could not check. A load-bearing fact that is unverified is the next agent's first task, not a premise.
 
 Redact any sensitive information, such as API keys, passwords, or personally identifiable information.
 

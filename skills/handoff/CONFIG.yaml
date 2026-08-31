@@ -1,9 +1,9 @@
 skill:
   name: handoff
   format: 2
-  version: 1.0.0
+  version: 1.0.1
   created: 2026-05-26
-  updated: 2026-05-26
+  updated: 2026-08-31
   author: kevin
 
 evaluation:
@@ -41,8 +41,8 @@ loading:
   - CONFIG.yaml
 compaction:
   cycle_threshold: 15
-  last_compaction: null
-  iteration_count: 169
+  last_compaction: 2026-08-31
+  iteration_count: 56
 budget:
   metadata_max: 100
   skill_max: 5000
