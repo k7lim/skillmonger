@@ -220,7 +220,7 @@ budget:
 
 **Compaction fields:**
 - `cycle_threshold`: Number of traces since `last_compaction` before compaction is recommended (default 15)
-- `iteration_count`: Traces since `last_compaction`. Derived by `harvest-feedback.sh`; incremented by `log-feedback.sh` between harvests.
+- `iteration_count`: Traces since `last_compaction`. Derived from the traces by `harvest-feedback.sh` and `sync-skill-back.sh`; incremented by `log-feedback.sh` between harvests.
 - `last_compaction`: Date of last compaction. Setting it is what resets the count.
 
 Compaction is recommended when `iteration_count >= cycle_threshold` **or**
@@ -228,6 +228,27 @@ three or more failing traces (outcome 1 or 2) have arrived since
 `last_compaction`. The second rule needs no CONFIG field; it is computed from
 the traces. `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh`
 all decide it in `scripts/lib/compaction.py`, so they cannot disagree.
+
+**Concurrent writers.** Three scripts do a read-modify-write on
+`skills/<name>/` -- `log-feedback.sh` (append a trace, bump
+`iteration_count`), `harvest-feedback.sh` (append the traces a deployed copy
+holds, recompute `iteration_count`) and `sync-skill-back.sh` (dedupe-append,
+merge `CONFIG.yaml`) -- and a gate run calls the first once per fixture while
+a deploy may be harvesting. Each holds the skill's lock, the directory
+`skills/<name>/.lock/` (`scripts/lib/skill-lock.sh`, `scripts/lib/skill_lock.py`;
+`mkdir` is the primitive because `flock` is not on macOS), for the whole
+read-modify-write and for nothing interactive. A waiter polls for up to
+`SKILLMONGER_LOCK_WAIT` seconds (60) and then fails without writing; a lock
+older than `SKILLMONGER_LOCK_STALE` seconds (120) is a killed process's and
+is renamed away, so only one waiter removes it. Under the lock a trace is one
+`printf >>` of the whole line, so lines never tear, and `CONFIG.yaml` is
+rewritten to a temp file beside it and renamed into place with only the
+changed lines touched -- comments, key order, quoting and unknown fields
+survive. So the invariant holds however the writers interleave: after any of
+them releases the lock, `iteration_count` equals the traces since
+`last_compaction` that are in the file. A deployed copy's epilogue takes no
+lock (it is one appending agent); a line it is still writing when a harvest
+reads it is skipped as unparseable and comes home whole next time.
 
 **Budget fields:** advisory ceilings, in words.
 - `metadata_max`: the SKILL.md frontmatter an agent loads before deciding to run the skill

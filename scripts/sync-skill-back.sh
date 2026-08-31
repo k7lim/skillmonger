@@ -1,11 +1,26 @@
 #!/bin/bash
 # sync-skill-back.sh - Pull changes from deployed skill instances back to source
 # Handles FEEDBACK.jsonl append, CONFIG.yaml merge, and content file diffing
+#
+# Concurrency: the FEEDBACK.jsonl dedupe-and-append and the CONFIG.yaml merge
+# run as one critical section under the source skill's lock
+# (skills/<name>/.lock/, lib/skill-lock.sh; log-feedback.sh and harvest.py
+# take the same one), so two syncs of the same deployed copy cannot both
+# find the same entries new, and a gate run appending meanwhile loses
+# nothing. The lock is released before the interactive content-file prompts.
+# CONFIG.yaml is merged by editing the lines the merge can change
+# (skill.version, skill.updated; compaction.iteration_count is re-derived
+# from the traces, as harvest-feedback.sh does) and renaming a temp file into
+# place: comments, key order, quoting and fields this script does not know
+# about all survive.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SKILLS_DIR="$PROJECT_ROOT/skills"
+SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
+
+# shellcheck source=lib/skill-lock.sh
+. "$SCRIPT_DIR/lib/skill-lock.sh"
 
 usage() {
   cat << EOF
@@ -24,12 +39,18 @@ Options:
   --help             Show this help message
 
 File Sync Strategies:
-  FEEDBACK.jsonl   Append new entries (dedupe by timestamp)
-  CONFIG.yaml      Merge: take higher version, higher iteration_count, later date
+  FEEDBACK.jsonl   Append new entries (dedupe by timestamp), then re-derive
+                   compaction.iteration_count from the traces
+  CONFIG.yaml      Merge: take higher version, later date
   references/*.md  Show diff, prompt: keep/take/merge
   memo/**/*.md     Show diff, prompt: keep/take/merge (includes memo/patterns/)
   SKILL.md         Show diff, prompt: keep/take/merge
   MEMO.md          Show diff, prompt: keep/take/merge
+
+Environment:
+  SKILLMONGER_SKILLS_DIR  Repo-side skills/ directory (default: $PROJECT_ROOT/skills)
+  SKILLMONGER_LOCK_WAIT   Seconds to wait for the skill's writer lock (default 60)
+  SKILLMONGER_LOCK_STALE  Age in seconds past which a leftover lock is removed (default 120)
 
 Examples:
   $(basename "$0") ai-talking-heads --from ~/sandbox/.claude/skills/ai-talking-heads
@@ -161,7 +182,10 @@ compare_dates() {
 yaml_get() {
   local file="$1"
   local key="$2"
-  grep "^[[:space:]]*$key:" "$file" 2>/dev/null | head -1 | sed "s/.*$key:[[:space:]]*//" | tr -d '"' | tr -d "'" | xargs
+  # A key the file lacks is an empty value, not (under pipefail) a fatal grep;
+  # a trailing comment is not part of the value.
+  { grep "^[[:space:]]*$key:" "$file" 2>/dev/null || true; } | head -1 \
+    | sed "s/.*$key:[[:space:]]*//; s/[[:space:]]\{1,\}#.*$//" | tr -d '"' | tr -d "'" | xargs
 }
 
 # Prompt for file action
@@ -228,6 +252,29 @@ prompt_file_action() {
 
 # --- Sync FEEDBACK.jsonl ---
 
+# iteration_count is derived from the traces, the same way harvest-feedback.sh
+# derives it, so an append here leaves the count equal to the lines in the
+# file. Without python3 the next harvest (which needs python3) sets it.
+recount_iteration() {
+  command -v python3 &> /dev/null || return 0
+  python3 - "$SCRIPT_DIR/lib" "$SOURCE_DIR" <<'PYEOF'
+import os
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from compaction import load_traces, read_compaction, traces_since, write_iteration_count
+
+skill_dir = sys.argv[2]
+config = os.path.join(skill_dir, "CONFIG.yaml")
+block = read_compaction(config)
+if block is not None:
+    traces = load_traces(os.path.join(skill_dir, "FEEDBACK.jsonl"))
+    count = len(traces_since(traces, block.get("last_compaction")))
+    if write_iteration_count(config, count):
+        print("  iteration_count: %d (derived from the traces)" % count)
+PYEOF
+}
+
 sync_feedback() {
   local source_feedback="$SOURCE_DIR/FEEDBACK.jsonl"
   local deployed_feedback="$FROM_PATH/FEEDBACK.jsonl"
@@ -251,6 +298,7 @@ sync_feedback() {
       count=$(wc -l < "$source_feedback" | xargs)
       echo "  ✓ Copied $count entries (new file)"
       ((CHANGES_MADE++)) || true
+      recount_iteration
     fi
     return 0
   fi
@@ -288,6 +336,7 @@ sync_feedback() {
     rm -f "$temp_new"
     echo "  ✓ Appended $new_entries new entries"
     ((CHANGES_MADE++)) || true
+    recount_iteration
   fi
 }
 
@@ -316,22 +365,19 @@ sync_config() {
     return 0
   fi
 
-  # Extract key fields
+  # Extract key fields. iteration_count is not merged: it is derived from
+  # the traces (recount_iteration), and a deployed copy's counter is whatever
+  # its epilogue last wrote, which under format 2 is nothing.
   local source_version deployed_version
   local source_updated deployed_updated
-  local source_iteration deployed_iteration
 
   source_version=$(yaml_get "$source_config" "version")
   deployed_version=$(yaml_get "$deployed_config" "version")
   source_updated=$(yaml_get "$source_config" "updated")
   deployed_updated=$(yaml_get "$deployed_config" "updated")
-  source_iteration=$(yaml_get "$source_config" "iteration_count")
-  deployed_iteration=$(yaml_get "$deployed_config" "iteration_count")
 
   source_version="${source_version:-0.0.0}"
   deployed_version="${deployed_version:-0.0.0}"
-  source_iteration="${source_iteration:-0}"
-  deployed_iteration="${deployed_iteration:-0}"
 
   local changes=""
 
@@ -347,11 +393,6 @@ sync_config() {
     fi
   fi
 
-  # Compare iteration count
-  if [ "$deployed_iteration" -gt "$source_iteration" ] 2>/dev/null; then
-    changes="${changes}iteration_count: $source_iteration -> $deployed_iteration\n"
-  fi
-
   if [ -z "$changes" ]; then
     echo "  No mergeable changes detected"
     return 0
@@ -365,60 +406,107 @@ sync_config() {
     return 0
   fi
 
-  # Apply changes using Python if available, otherwise sed
-  if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
-    python3 << PYEOF
-import yaml
+  # The values the merge decided on, already compared above with the same
+  # grep the fallback uses, so python and sed apply the same decision.
+  local new_version="" new_updated=""
+  if compare_versions "$deployed_version" "$source_version"; then
+    new_version="$deployed_version"
+  fi
+  if [ -n "$deployed_updated" ] && [ -n "$source_updated" ]; then
+    if compare_dates "$deployed_updated" "$source_updated"; then
+      new_updated="$deployed_updated"
+    fi
+  fi
 
-with open('$source_config', 'r') as f:
-    config = yaml.safe_load(f)
+  # Edit the lines in place and land the file by rename. A yaml.dump here
+  # would drop every comment and unquote every string (that is how
+  # handoff's upstream.repo lost its quotes); replacing the values on their
+  # own lines keeps the file as its author wrote it.
+  if command -v python3 &> /dev/null; then
+    SOURCE_CONFIG="$source_config" NEW_VERSION="$new_version" \
+    NEW_UPDATED="$new_updated" python3 <<'PYEOF'
+import os
+import re
 
-with open('$deployed_config', 'r') as f:
-    deployed = yaml.safe_load(f)
+path = os.environ["SOURCE_CONFIG"]
+wanted = {
+    ("skill", "version"): os.environ["NEW_VERSION"],
+    ("skill", "updated"): os.environ["NEW_UPDATED"],
+}
+wanted = {k: v for k, v in wanted.items() if v}
 
-# Merge version (take higher)
-src_ver = config.get('skill', {}).get('version', '0.0.0')
-dep_ver = deployed.get('skill', {}).get('version', '0.0.0')
-from packaging.version import Version
+with open(path) as handle:
+    text = handle.read()
+lines = text.splitlines(True)
+
+KEY = re.compile(r"^(\s*)([A-Za-z0-9_.-]+):(\s*)(.*?)(\s*)$")
+
+
+def requote(old, new):
+    """Wrap the new value the way the old one was wrapped."""
+    old = old.strip()
+    if len(old) >= 2 and old[0] == old[-1] and old[0] in "\"'":
+        return old[0] + new + old[0]
+    return new
+
+
+block = None
+for index, line in enumerate(lines):
+    match = KEY.match(line.rstrip("\n"))
+    if not match:
+        continue
+    indent, key, gap, value, tail = match.groups()
+    if not indent:
+        block = key
+        continue
+    target = (block, key)
+    if target not in wanted:
+        continue
+    # A trailing comment rides along with the old value, spacing and all.
+    comment = ""
+    trailing = re.match(r"^(.*?)(\s+#.*)$", value)
+    if trailing:
+        value, comment = trailing.group(1), trailing.group(2)
+    newline = "\n" if line.endswith("\n") else ""
+    lines[index] = "%s%s:%s%s%s%s" % (
+        indent, key, gap or " ", requote(value, wanted[target]), comment, newline
+    )
+    del wanted[target]
+
+for (section, key), value in wanted.items():
+    # The block exists but lacks the key (or the block is missing): add it.
+    for index, line in enumerate(lines):
+        if line.startswith(section + ":"):
+            lines.insert(index + 1, "  %s: %s\n" % (key, value))
+            break
+    else:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
+        lines.append("\n%s:\n  %s: %s\n" % (section, key, value))
+
+tmp = "%s.tmp.%d" % (path, os.getpid())
+with open(tmp, "w") as handle:
+    handle.write("".join(lines))
 try:
-    from packaging.version import Version
-    if Version(dep_ver) > Version(src_ver):
-        config.setdefault('skill', {})['version'] = dep_ver
-except:
-    # Fallback: string comparison
-    if dep_ver > src_ver:
-        config.setdefault('skill', {})['version'] = dep_ver
-
-# Merge updated date (take later)
-src_date = config.get('skill', {}).get('updated', '')
-dep_date = deployed.get('skill', {}).get('updated', '')
-if dep_date and (not src_date or dep_date > src_date):
-    config.setdefault('skill', {})['updated'] = dep_date
-
-# Merge iteration_count (take higher)
-src_iter = config.get('compaction', {}).get('iteration_count', 0)
-dep_iter = deployed.get('compaction', {}).get('iteration_count', 0)
-if dep_iter > src_iter:
-    config.setdefault('compaction', {})['iteration_count'] = dep_iter
-
-with open('$source_config', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    os.chmod(tmp, os.stat(path).st_mode)
+except OSError:
+    pass
+os.replace(tmp, path)
 PYEOF
     echo "  ✓ Merged CONFIG.yaml changes"
     ((CHANGES_MADE++)) || true
   else
-    # Fallback: sed-based (less reliable)
-    if compare_versions "$deployed_version" "$source_version"; then
-      sed -i '' "s/version:[[:space:]]*$source_version/version: $deployed_version/" "$source_config"
+    # Fallback: sed-based (less reliable), still landed by rename
+    local config_tmp="$source_config.tmp.$$"
+    cp "$source_config" "$config_tmp"
+    if [ -n "$new_version" ]; then
+      sed -i.bak "s/version:[[:space:]]*$source_version/version: $new_version/" "$config_tmp"
     fi
-    if [ -n "$deployed_updated" ] && [ -n "$source_updated" ]; then
-      if compare_dates "$deployed_updated" "$source_updated"; then
-        sed -i '' "s/updated:[[:space:]]*$source_updated/updated: $deployed_updated/" "$source_config"
-      fi
+    if [ -n "$new_updated" ]; then
+      sed -i.bak "s/updated:[[:space:]]*$source_updated/updated: $new_updated/" "$config_tmp"
     fi
-    if [ "$deployed_iteration" -gt "$source_iteration" ] 2>/dev/null; then
-      sed -i '' "s/iteration_count:[[:space:]]*$source_iteration/iteration_count: $deployed_iteration/" "$source_config"
-    fi
+    rm -f "$config_tmp.bak"
+    mv -f "$config_tmp" "$source_config"
     echo "  ✓ Merged CONFIG.yaml changes (sed fallback)"
     ((CHANGES_MADE++)) || true
   fi
@@ -527,10 +615,21 @@ sync_content_files() {
 
 # --- Main ---
 
+# Feedback and CONFIG are the shared state other writers race on; hold the
+# skill's lock across both and let it go before anything asks a question.
+# A dry run only reads, but reading under the lock keeps its report exact.
+skill_lock "$SOURCE_DIR" || exit 1
+trap skill_unlock EXIT
+
 sync_feedback
 
 if [ -z "$FEEDBACK_ONLY" ]; then
   sync_config
+fi
+
+skill_unlock
+
+if [ -z "$FEEDBACK_ONLY" ]; then
   sync_content_files
 fi
 

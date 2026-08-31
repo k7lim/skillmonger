@@ -238,7 +238,10 @@ def write_iteration_count(path, count):
     """Set compaction.iteration_count, touching only that line.
 
     Rewriting the whole file through yaml.dump would drop comments and reflow
-    every list, so the value is replaced in place instead.
+    every list, so the value is replaced in place instead, and the file is
+    replaced atomically (temp file beside it, then rename) so a reader never
+    sees a half-written CONFIG. Callers hold the skill lock (skill_lock.py)
+    when another writer could be running.
     """
     text = open(path, "r", encoding="utf-8").read()
     lines = text.splitlines()
@@ -255,9 +258,20 @@ def write_iteration_count(path, count):
             break
     else:
         lines.insert(start + 1, f"{indent}iteration_count: {count}")
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + ("\n" if text.endswith("\n") else ""))
+    atomic_write(path, "\n".join(lines) + ("\n" if text.endswith("\n") else ""))
     return True
+
+
+def atomic_write(path, text):
+    """Replace `path` with `text` in one rename, keeping its mode."""
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    try:
+        os.chmod(tmp, os.stat(path).st_mode)
+    except OSError:
+        pass
+    os.replace(tmp, path)
 
 
 # --- entry point ----------------------------------------------------------

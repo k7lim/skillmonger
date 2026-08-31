@@ -31,3 +31,8 @@ venv/
 
 # sync-upstream.sh review scratch
 .upstream-review/
+
+# per-skill writer lock (scripts/lib/skill-lock.sh); a leftover is a killed run
+skills/*/.lock/
+skills/*/.lock.stale.*/
+skills/*/CONFIG.yaml.tmp.*

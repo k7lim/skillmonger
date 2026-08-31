@@ -1,10 +1,23 @@
 #!/bin/bash
 # log-feedback.sh - Record one feedback entry to FEEDBACK.jsonl and increment iteration_count
+#
+# Concurrency: a gate run calls this once per fixture, and several gate runs,
+# a harvest or a sync-back may be writing the same skill at once. The append
+# and the iteration_count bump are one critical section under the skill's
+# lock (skills/<name>/.lock/, lib/skill-lock.sh; harvest.py and
+# sync-skill-back.sh take the same one). The trace goes out as one
+# `printf >>` of the whole line, so it can never be torn, and CONFIG.yaml is
+# rewritten to a temp file beside it and renamed into place, so no reader
+# ever sees a half-written CONFIG. The lock is taken only after every prompt
+# has been answered, so an interactive session never holds it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SKILLS_DIR="$PROJECT_ROOT/skills"
+SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
+
+# shellcheck source=lib/skill-lock.sh
+. "$SCRIPT_DIR/lib/skill-lock.sh"
 
 usage() {
   cat << EOF
@@ -32,6 +45,11 @@ Options:
   --help            Show this help message
 
 Interactive mode: omit options to be prompted for each field.
+
+Environment:
+  SKILLMONGER_SKILLS_DIR  Repo-side skills/ directory (default: $PROJECT_ROOT/skills)
+  SKILLMONGER_LOCK_WAIT   Seconds to wait for the skill's writer lock (default 60)
+  SKILLMONGER_LOCK_STALE  Age in seconds past which a leftover lock is removed (default 120)
 
 This is for in-repo use -- gate runs and manual logging. Agents run deployed
 copies that cannot reach this repo, so their epilogues append the trace to the
@@ -329,9 +347,18 @@ fi
 JSON_LINE="{\"ts\":\"$TIMESTAMP\",\"skill\":\"$SKILL_NAME\",\"version\":\"$VERSION\",\"prompt\":\"$ESCAPED_PROMPT\",\"outcome\":$OUTCOME,\"note\":\"$ESCAPED_NOTE\",\"source\":\"$SOURCE\"$OPTIONAL_FIELDS,\"schema_version\":1}"
 
 # --- Append to FEEDBACK.jsonl ---
+#
+# From here to the CONFIG rewrite is the critical section: everything the
+# caller could be asked has been asked, and the lock is released on exit
+# whichever way the script leaves.
+
+skill_lock "$SKILL_DIR" || exit 1
+trap skill_unlock EXIT
 
 FEEDBACK_FILE="$SKILL_DIR/FEEDBACK.jsonl"
-echo "$JSON_LINE" >> "$FEEDBACK_FILE"
+# One write of the whole line into an O_APPEND file: a concurrent appender
+# can land before or after it, never inside it.
+printf '%s\n' "$JSON_LINE" >> "$FEEDBACK_FILE"
 echo "Logged feedback to $FEEDBACK_FILE"
 
 # --- Increment iteration_count in CONFIG.yaml ---
@@ -340,6 +367,7 @@ echo "Logged feedback to $FEEDBACK_FILE"
 # rewrites the whole file: every comment gone, every list re-indented. Nobody
 # noticed while the only caller was a human logging one trace by hand; a gate
 # run calls this once per fixture and would strip a CONFIG on its first pass.
+# The result lands by rename, so the file is never seen half-written.
 
 if [ -f "$CONFIG_FILE" ]; then
   if command -v python3 &> /dev/null; then
@@ -394,22 +422,32 @@ if current is None:
             lines.append("\n")
         lines.append("\ncompaction:\n  iteration_count: 1\n")
 
-with open(path, "w") as handle:
+tmp = "%s.tmp.%d" % (path, os.getpid())
+with open(tmp, "w") as handle:
     handle.write("".join(lines))
+try:
+    os.chmod(tmp, os.stat(path).st_mode)
+except OSError:
+    pass
+os.replace(tmp, path)
 
 print("  iteration_count: %d -> %d" % (current, current + 1))
 PYEOF
   else
-    # Fallback: sed-based increment (less reliable but works without PyYAML)
+    # Fallback: sed-based increment (less reliable but works without python3)
     current=$(grep "iteration_count:" "$CONFIG_FILE" | head -1 | sed 's/.*iteration_count:[[:space:]]*//' | xargs)
     current="${current:-0}"
     new_count=$((current + 1))
-    sed -i '' "s/iteration_count:[[:space:]]*$current/iteration_count: $new_count/" "$CONFIG_FILE"
+    CONFIG_TMP="$CONFIG_FILE.tmp.$$"
+    sed "s/iteration_count:[[:space:]]*$current/iteration_count: $new_count/" "$CONFIG_FILE" > "$CONFIG_TMP"
+    mv -f "$CONFIG_TMP" "$CONFIG_FILE"
     echo "  iteration_count: $current -> $new_count"
   fi
 else
   echo "  No CONFIG.yaml found - skipping iteration_count increment"
 fi
+
+skill_unlock
 
 # --- Is compaction due? ---
 #

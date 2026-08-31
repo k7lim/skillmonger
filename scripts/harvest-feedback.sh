@@ -9,6 +9,14 @@
 #
 # deploy-skill.sh runs this before it removes a deployed copy, so a redeploy
 # no longer destroys the traces that copy accumulated.
+#
+# Concurrency: each skill is read, appended and recounted under that skill's
+# lock (skills/<name>/.lock/, lib/skill_lock.py -- the same lock
+# log-feedback.sh and sync-skill-back.sh take), so a gate run logging traces
+# while this harvests loses no line and ends with the count it should have.
+# CONFIG.yaml is replaced by rename, never written in place. A deployed
+# copy is only read, without a lock: a line its agent is mid-write is skipped
+# as unparseable and comes home whole on the next harvest.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -17,6 +17,12 @@ Rules:
     hybrid -> script when the trace carries `checks` else llm, missing -> llm.
     `version` is left exactly as written.
   * Unparseable lines are skipped with a warning; they are never repaired.
+    A line an agent is still writing at harvest time is one of these; it is
+    whole by the next harvest and comes home then.
+  * One skill at a time is written under that skill's lock (skill_lock.py,
+    the same `skills/<name>/.lock/` log-feedback.sh takes), so a gate run
+    appending traces while this runs loses nothing and the recomputed
+    iteration_count counts every line that was there when it was written.
 
 `iteration_count`, the compaction block it lives in, and the trigger that
 decides when compaction is recommended belong to `compaction.py`.
@@ -42,6 +48,7 @@ from compaction import (  # noqa: E402
     traces_since,
     write_iteration_count,
 )
+from skill_lock import SkillLock, SkillLockTimeout  # noqa: E402
 
 
 # --- traces ---------------------------------------------------------------
@@ -247,32 +254,44 @@ def main(argv):
         if not target_files and not os.path.exists(repo_file):
             continue
 
-        added, traces, collisions, collision_ts = harvest_skill(
-            name, repo_file, target_files, warn
-        )
-        if collisions:
-            warn(
-                f"{name}: {collisions} trace(s) share a ts with a different trace "
-                f"(first {collision_ts}); kept as distinct traces"
+        # Read the repo file, append, recount: one critical section under the
+        # skill's lock, so a log-feedback.sh running at the same time can
+        # neither slip a line between our read and our append nor bump an
+        # iteration_count we are about to overwrite with a smaller one.
+        try:
+            lock = SkillLock(os.path.join(skills_dir, name), warn=warn).acquire()
+        except SkillLockTimeout as exc:
+            warn(f"{name}: {exc}; skipped this run")
+            continue
+        try:
+            added, traces, collisions, collision_ts = harvest_skill(
+                name, repo_file, target_files, warn
             )
+            if collisions:
+                warn(
+                    f"{name}: {collisions} trace(s) share a ts with a different trace "
+                    f"(first {collision_ts}); kept as distinct traces"
+                )
 
-        config_path = os.path.join(skills_dir, name, "CONFIG.yaml")
-        compaction = read_compaction(config_path)
-        note = ""
-        if compaction is None:
-            if added:
-                note = "  (no compaction block; iteration_count not set)"
-        else:
-            since = traces_since(traces, compaction.get("last_compaction"))
-            count = len(since)
-            write_iteration_count(config_path, count)
-            threshold = int(compaction.get("cycle_threshold") or DEFAULT_CYCLE_THRESHOLD)
-            bad = len(failing(since))
-            note = f"  iteration_count={count}"
-            # Both triggers, decided in compaction.py so this script,
-            # log-feedback.sh and compact-memo.sh cannot answer differently.
-            if recommend(count, threshold, bad):
-                recommendations.append((name, reasons(count, threshold, bad)))
+            config_path = os.path.join(skills_dir, name, "CONFIG.yaml")
+            compaction = read_compaction(config_path)
+            note = ""
+            if compaction is None:
+                if added:
+                    note = "  (no compaction block; iteration_count not set)"
+            else:
+                since = traces_since(traces, compaction.get("last_compaction"))
+                count = len(since)
+                write_iteration_count(config_path, count)
+                threshold = int(compaction.get("cycle_threshold") or DEFAULT_CYCLE_THRESHOLD)
+                bad = len(failing(since))
+                note = f"  iteration_count={count}"
+                # Both triggers, decided in compaction.py so this script,
+                # log-feedback.sh and compact-memo.sh cannot answer differently.
+                if recommend(count, threshold, bad):
+                    recommendations.append((name, reasons(count, threshold, bad)))
+        finally:
+            lock.release()
 
         if added:
             total_added += added
