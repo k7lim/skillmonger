@@ -303,7 +303,7 @@ fi
 
 # Known files we've already handled (includes sandbox-only files)
 KNOWN_FILES="SKILL.md CONFIG.yaml MEMO.md DESIGN.md README.md BRIEF.md PLAN.md FEEDBACK.jsonl"
-KNOWN_DIRS="scripts references"
+KNOWN_DIRS="scripts references memo"
 
 # Find extra files
 EXTRA_FILES=()

@@ -47,6 +47,14 @@ OURS_ALWAYS = {
     "OVERLAY.md",
 }
 
+# Same, but matched by directory prefix rather than exact file path: every
+# file under these directories is furniture, however deeply nested. `memo/`
+# holds wiki overflow (format 2.1, `memo/patterns/<slug>.md`) ahead of any
+# skill actually using it.
+OURS_ALWAYS_PREFIXES = (
+    "memo/",
+)
+
 SOURCE_HEADER_BEGIN = "<!-- generated-from-config:begin -->"
 SOURCE_HEADER_END = "<!-- generated-from-config:end -->"
 
@@ -189,7 +197,7 @@ def classify(
     skill_dir = Path(skill_dir)
     zones = {}
     for rel in skill_files(skill_dir):
-        if rel in OURS_ALWAYS:
+        if rel in OURS_ALWAYS or rel.startswith(OURS_ALWAYS_PREFIXES):
             zones[rel] = "ours"
             continue
         blob = git_show(vendor, ref, f"{upstream_path.rstrip('/')}/{map_rel(rel, path_map)}")

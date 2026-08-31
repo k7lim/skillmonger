@@ -37,6 +37,14 @@ for file in CONFIG.yaml MEMO.md; do
   fi
 done
 
+# Check 2b: memo/ directory (wiki overflow, format 2.1) - optional
+if [ -d "$SKILL_DIR/memo" ]; then
+  memo_count=$(find "$SKILL_DIR/memo" -type f | wc -l | xargs)
+  ok "memo/ directory exists ($memo_count file(s), optional)"
+else
+  echo "  - memo/ not present (optional)"
+fi
+
 # Check 3: SKILL.md frontmatter validation
 echo ""
 echo "Validating SKILL.md frontmatter..."

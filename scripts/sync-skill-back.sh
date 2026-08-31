@@ -27,6 +27,7 @@ File Sync Strategies:
   FEEDBACK.jsonl   Append new entries (dedupe by timestamp)
   CONFIG.yaml      Merge: take higher version, higher iteration_count, later date
   references/*.md  Show diff, prompt: keep/take/merge
+  memo/**/*.md     Show diff, prompt: keep/take/merge (includes memo/patterns/)
   SKILL.md         Show diff, prompt: keep/take/merge
   MEMO.md          Show diff, prompt: keep/take/merge
 
@@ -488,6 +489,39 @@ sync_content_files() {
         fi
       fi
     done
+  fi
+
+  # memo/**/*.md (wiki overflow, format 2.1: includes memo/patterns/<slug>.md)
+  if [ -d "$FROM_PATH/memo" ]; then
+    while IFS= read -r deployed_memo; do
+      [ -f "$deployed_memo" ] || continue
+      local memo_rel="${deployed_memo#"$FROM_PATH"/memo/}"
+      local source_memo="$SOURCE_DIR/memo/$memo_rel"
+
+      if [ -f "$source_memo" ]; then
+        prompt_file_action "memo/$memo_rel" "$source_memo" "$deployed_memo"
+      else
+        # New memo file
+        if [ -n "$DRY_RUN" ]; then
+          echo "  [DRY RUN] Would copy memo/$memo_rel (new file)"
+        elif [ -n "$AUTO_MODE" ]; then
+          mkdir -p "$(dirname "$source_memo")"
+          cp "$deployed_memo" "$source_memo"
+          echo "  ✓ Copied memo/$memo_rel (new file)"
+          ((CHANGES_MADE++)) || true
+        else
+          echo ""
+          echo "New memo file: memo/$memo_rel"
+          read -rp "Copy to source? (y/n) " yn
+          if [[ "$yn" =~ ^[Yy] ]]; then
+            mkdir -p "$(dirname "$source_memo")"
+            cp "$deployed_memo" "$source_memo"
+            echo "  ✓ Copied memo/$memo_rel"
+            ((CHANGES_MADE++)) || true
+          fi
+        fi
+      fi
+    done < <(find "$FROM_PATH/memo" -type f -name '*.md' | sort)
   fi
 }
 
