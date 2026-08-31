@@ -115,7 +115,7 @@ and what only a person can judge.
 Run this skill's evaluator on the output you just produced:
 
 ```bash
-scripts/evaluate <results.json>
+scripts/evaluate   # takes the output on stdin, or as its first argument
 ```
 
 It prints `{"outcome":1-5,"note":"...","checks":{...},"source":"script"}`.
