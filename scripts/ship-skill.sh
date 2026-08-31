@@ -284,9 +284,9 @@ _Patterns will graduate from iterations._
 
 ## Iteration Log
 
-| Date | Version | Change Type | Description |
-|------|---------|-------------|-------------|
-| $TODAY | 1.0.0 | Initial | Promoted from sandbox |
+| Date | Version | Change Type | Description | Patterns |
+|------|---------|-------------|-------------|----------|
+| $TODAY | 1.0.0 | Initial | Promoted from sandbox | - |
 
 ---
 

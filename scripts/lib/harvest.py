@@ -17,6 +17,9 @@ Rules:
     hybrid -> script when the trace carries `checks` else llm, missing -> llm.
     `version` is left exactly as written.
   * Unparseable lines are skipped with a warning; they are never repaired.
+
+`iteration_count`, the compaction block it lives in, and the trigger that
+decides when compaction is recommended belong to `compaction.py`.
 """
 
 from __future__ import annotations
@@ -26,10 +29,19 @@ import json
 import os
 import sys
 
-try:
-    import yaml
-except ImportError:  # sed-style line scanning covers the read; see read_compaction
-    yaml = None
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# The compaction trigger and the CONFIG.yaml block it reads live in one module
+# so log-feedback.sh, harvest-feedback.sh and compact-memo.sh cannot drift.
+from compaction import (  # noqa: E402
+    DEFAULT_CYCLE_THRESHOLD,
+    failing,
+    read_compaction,
+    reasons,
+    recommend,
+    traces_since,
+    write_iteration_count,
+)
 
 
 # --- traces ---------------------------------------------------------------
@@ -150,118 +162,6 @@ def harvest_skill(skill, repo_file, target_files, warn):
     return added, kept, collisions, first_collision_ts
 
 
-# --- CONFIG.yaml ----------------------------------------------------------
-
-
-def _compaction_block(lines):
-    """(start, end, indent) of the compaction: block, or None."""
-    for i, line in enumerate(lines):
-        if line.startswith("compaction:"):
-            end = len(lines)
-            for j in range(i + 1, len(lines)):
-                stripped = lines[j].strip()
-                if stripped and not lines[j][:1].isspace():
-                    end = j
-                    break
-            indent = "  "
-            for j in range(i + 1, end):
-                if lines[j].strip():
-                    indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
-                    break
-            return i, end, indent
-    return None
-
-
-def read_compaction(path):
-    """Return the compaction block as a dict, or None when the skill has none."""
-    if not os.path.exists(path):
-        return None
-    text = open(path, "r", encoding="utf-8").read()
-    if yaml is not None:
-        try:
-            config = yaml.safe_load(text) or {}
-        except Exception:
-            config = {}
-        if isinstance(config, dict) and isinstance(config.get("compaction"), dict):
-            block = dict(config["compaction"])
-            last = block.get("last_compaction")
-            if last is not None and not isinstance(last, str):
-                block["last_compaction"] = str(last)
-            return block
-        if isinstance(config, dict) and "compaction" in config:
-            return {}
-        return None
-    # Fallback: scan the block the way the sed paths in the other scripts do.
-    lines = text.splitlines()
-    found = _compaction_block(lines)
-    if found is None:
-        return None
-    start, end, _ = found
-    block = {}
-    for line in lines[start + 1 : end]:
-        if ":" not in line:
-            continue
-        key, _, value = line.strip().partition(":")
-        value = value.strip().strip('"').strip("'")
-        if value in ("null", "~", ""):
-            block[key.strip()] = None
-        elif value.isdigit():
-            block[key.strip()] = int(value)
-        else:
-            block[key.strip()] = value
-    return block
-
-
-def write_iteration_count(path, count):
-    """Set compaction.iteration_count, touching only that line.
-
-    Rewriting the whole file through yaml.dump would drop comments and reflow
-    every list, so the value is replaced in place instead.
-    """
-    text = open(path, "r", encoding="utf-8").read()
-    lines = text.splitlines()
-    found = _compaction_block(lines)
-    if found is None:
-        return False
-    start, end, indent = found
-    for i in range(start + 1, end):
-        stripped = lines[i].strip()
-        if stripped.startswith("iteration_count:"):
-            if stripped == f"iteration_count: {count}":
-                return False
-            lines[i] = f"{indent}iteration_count: {count}"
-            break
-    else:
-        lines.insert(start + 1, f"{indent}iteration_count: {count}")
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + ("\n" if text.endswith("\n") else ""))
-    return True
-
-
-def traces_since(traces, last_compaction):
-    """Traces newer than the last compaction; all of them when it is unset.
-
-    A trace with no `ts` cannot be placed in time, so it counts: over-counting
-    triggers a compaction that a maintainer can decline, under-counting hides
-    the traces that compaction exists to consolidate.
-    """
-    if not last_compaction:
-        return list(traces)
-    out = []
-    for trace in traces:
-        ts = trace.get("ts")
-        if not isinstance(ts, str) or not ts.strip():
-            out.append(trace)
-        elif ts > str(last_compaction):
-            out.append(trace)
-    return out
-
-
-def failing(traces):
-    """Failing traces, per CONTEXT.md: outcome 1 or 2."""
-    return [t for t in traces if t.get("outcome") in (1, 2)]
-
-
 # --- entry point ----------------------------------------------------------
 
 
@@ -366,14 +266,13 @@ def main(argv):
             since = traces_since(traces, compaction.get("last_compaction"))
             count = len(since)
             write_iteration_count(config_path, count)
-            threshold = compaction.get("cycle_threshold") or 15
+            threshold = int(compaction.get("cycle_threshold") or DEFAULT_CYCLE_THRESHOLD)
+            bad = len(failing(since))
             note = f"  iteration_count={count}"
-            if count >= int(threshold):
-                bad = len(failing(since))
-                # Format 1.1 triggers on count alone. Format 1.2 adds the
-                # second trigger from CONTEXT.md -- three or more failing
-                # traces since the last compaction -- which is `bad >= 3`.
-                recommendations.append((name, count, int(threshold), bad))
+            # Both triggers, decided in compaction.py so this script,
+            # log-feedback.sh and compact-memo.sh cannot answer differently.
+            if recommend(count, threshold, bad):
+                recommendations.append((name, reasons(count, threshold, bad)))
 
         if added:
             total_added += added
@@ -388,9 +287,8 @@ def main(argv):
     if recommendations and not quiet:
         print("")
         print("Compaction recommended:")
-        for name, count, threshold, bad in recommendations:
-            failing_note = f", {bad} failing" if bad else ""
-            print(f"  {name}: {count} traces >= threshold {threshold}{failing_note}")
+        for name, why in recommendations:
+            print(f"  {name}: {'; '.join(why)}")
             print(f"    scripts/compact-memo.sh skills/{name}/")
 
     return 0

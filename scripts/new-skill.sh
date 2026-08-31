@@ -267,9 +267,9 @@ _None logged yet_
 
 ## Iteration Log
 
-| Date | Version | Change Type | Description |
-|------|---------|-------------|-------------|
-| $TODAY | 1.0.0 | Initial | Skill created |
+| Date | Version | Change Type | Description | Patterns |
+|------|---------|-------------|-------------|----------|
+| $TODAY | 1.0.0 | Initial | Skill created | - |
 
 ---
 

@@ -16,7 +16,7 @@ Framework for building reusable AI agent skills. Skills deploy to Claude Code, C
 - **Delayed:** Don't log at execution time. Come back when ground truth is available and log with `log-feedback.sh --source user`.
 - **Hybrid:** Evaluate script for verifiable parts, qualitative ask for the rest.
 
-Under skill format 1 each feedback entry increments `iteration_count` in CONFIG.yaml by hand. Under format 2 the epilogue is rendered by `scripts/render-epilogue.sh` from the CONFIG `evaluation:` block, says nothing about `iteration_count`, and the count is derived when traces are harvested. Either way, at threshold (default 15) compaction is recommended. See `docs/skill-format.md`.
+Under skill format 1 each feedback entry increments `iteration_count` in CONFIG.yaml by hand. Under format 2 the epilogue is rendered by `scripts/render-epilogue.sh` from the CONFIG `evaluation:` block, says nothing about `iteration_count`, and the count is derived when traces are harvested. Either way compaction is recommended at the threshold (default 15) **or** once three or more failing traces (outcome 1-2) have arrived since `last_compaction`, whichever comes first. The rule lives in `scripts/lib/compaction.py`; `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh` all call it rather than each computing it. See `docs/skill-format.md`.
 
 **Deterministic vs natural language split:** Scripts produce data (JSON), prompts interpret meaning. `check-prereqs` is the pre-execution bookend, `evaluate` is the post-execution bookend. See Skill Script Interface below for language options.
 
@@ -49,10 +49,10 @@ vendor/              # External repos (gitignored content, don't edit)
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
-| `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml |
-| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py` |
+| `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml, `lib/compaction.py` |
+| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
 | `analyze-feedback.sh` | Summarize feedback trends | skill FEEDBACK.jsonl files |
-| `compact-memo.sh` | Guide MEMO.md compaction | skill's CONFIG.yaml, FEEDBACK.jsonl |
+| `compact-memo.sh` | Print the Maintainer's brief for one skill's MEMO.md | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
 | `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |
 | `check-upstream.sh` | Report upstream/local drift for adopted skills | `scripts/lib/upstream.py` |

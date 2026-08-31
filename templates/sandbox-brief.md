@@ -68,6 +68,20 @@ tags: comma, separated
 
 Optional — create if you encounter edge cases during development.
 
+Write each one as a pattern entry, so the first compaction has something to
+root-cause against:
+
+```markdown
+### <slug>: short title
+- status: open
+- root cause: one sentence
+- evidence: manual
+- workaround: what the agent should do now
+```
+
+`evidence: manual` is honest here: during development there are no traces yet.
+See `docs/skill-format.md` (MEMO.md section) for the full layout.
+
 ## Feedback mechanism
 
 The guide document must end with instructions for how the agent logs feedback after execution. The right mechanism depends on what the skill produces.

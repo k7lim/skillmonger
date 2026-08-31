@@ -193,11 +193,6 @@ with open('$CONFIG_FILE', 'w') as f:
     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 print(f"  iteration_count: {current} -> {current + 1}")
-
-threshold = config['compaction'].get('cycle_threshold', 15)
-if current + 1 >= threshold:
-    print(f"  Compaction recommended! ({current + 1} >= {threshold})")
-    print(f"  Run: scripts/compact-memo.sh skills/{config.get('skill',{}).get('name','')}/")
 PYEOF
   else
     # Fallback: sed-based increment (less reliable but works without PyYAML)
@@ -209,4 +204,14 @@ PYEOF
   fi
 else
   echo "  No CONFIG.yaml found - skipping iteration_count increment"
+fi
+
+# --- Is compaction due? ---
+#
+# The trigger is not this script's to decide: harvest-feedback.sh and
+# compact-memo.sh must answer identically, so all three call compaction.py.
+# It counts the failing traces itself, so the trace just written is included.
+if command -v python3 &> /dev/null; then
+  echo ""
+  python3 "$SCRIPT_DIR/lib/compaction.py" --skill-dir "$SKILL_DIR"
 fi

@@ -1,115 +1,152 @@
 #!/bin/bash
-# compact-memo.sh - Compaction process for MEMO.md
-# Reviews edge cases and learnings for graduation to SKILL.md
+# compact-memo.sh - The Maintainer's tool for one skill's wiki
+#
+# Compaction (CONTEXT.md) is the pass where traces become patterns and stable
+# patterns graduate into SKILL.md. This script does none of that: it harvests
+# the traces home, then prints the brief the agent needs to do it -- what
+# arrived since the last compaction, which wiki entries predate the pattern
+# layout, a pattern template with its evidence filled in, and, for a dependent
+# skill, the owner skills a pattern might belong to instead.
+#
+# It is a guide, not an editor. Nothing under the skill directory is written
+# except the traces the harvest brings home.
 set -euo pipefail
 
-SKILL_DIR="${1:-.}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SKILLS_DIR="${SKILLMONGER_SKILLS_DIR:-$PROJECT_ROOT/skills}"
+
+usage() {
+  cat << EOF
+Usage: $(basename "$0") <skill-dir> [options]
+
+Prints the compaction brief for one skill's wiki (MEMO.md).
+
+Options:
+  --no-harvest   Skip the harvest; read the traces already in the repo
+  --help         Show this help message
+
+Examples:
+  $(basename "$0") skills/yt-dlp/
+  $(basename "$0") skills/yt-dlp/ --no-harvest
+EOF
+}
+
+SKILL_ARG=""
+NO_HARVEST=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --no-harvest)
+      NO_HARVEST=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Error: Unknown option $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [ -z "$SKILL_ARG" ]; then
+        SKILL_ARG="$1"
+      else
+        echo "Error: Unexpected argument $1" >&2
+        usage >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+SKILL_DIR="${SKILL_ARG:-.}"
+if [ ! -d "$SKILL_DIR" ]; then
+  echo "Error: Skill directory not found: $SKILL_DIR" >&2
+  exit 1
+fi
 SKILL_DIR="$(cd "$SKILL_DIR" && pwd)"
 SKILL_NAME="$(basename "$SKILL_DIR")"
 
 MEMO_FILE="$SKILL_DIR/MEMO.md"
-CONFIG_FILE="$SKILL_DIR/CONFIG.yaml"
-SKILL_FILE="$SKILL_DIR/SKILL.md"
 
 echo "Compaction Review: $SKILL_NAME"
 echo "Path: $SKILL_DIR"
 echo ""
 
 if [ ! -f "$MEMO_FILE" ]; then
-  echo "No MEMO.md found - nothing to compact."
+  echo "No MEMO.md found - this skill has no wiki to compact."
   exit 0
 fi
 
-# Display current stats
-echo "=== MEMO.md Statistics ==="
-word_count=$(wc -w < "$MEMO_FILE" | xargs)
-line_count=$(wc -l < "$MEMO_FILE" | xargs)
-echo "  Lines: $line_count"
-echo "  Words: $word_count"
+# --- Harvest first ---
+#
+# Traces are written into the deployed copy, not here (ADR 0002), so a brief
+# built before the harvest describes a repo that is behind the agents.
+if [ -z "$NO_HARVEST" ]; then
+  if [ "$SKILL_DIR" = "$SKILLS_DIR/$SKILL_NAME" ]; then
+    echo "=== Harvest ==="
+    "$SCRIPT_DIR/harvest-feedback.sh" "$SKILL_NAME" || true
+    echo ""
+  else
+    echo "=== Harvest ==="
+    echo "  Skipped: $SKILL_DIR is not $SKILLS_DIR/$SKILL_NAME, so the deploy"
+    echo "  targets cannot be matched to it. Traces read as they are on disk."
+    echo ""
+  fi
+fi
 
-# Count sections
-edge_cases=$(grep -c "^### " "$MEMO_FILE" 2>/dev/null || echo "0")
-echo "  Edge case entries: ~$edge_cases"
+# --- Wiki size ---
+echo "=== Wiki size ==="
+echo "  Lines: $(wc -l < "$MEMO_FILE" | xargs)"
+echo "  Words: $(wc -w < "$MEMO_FILE" | xargs)"
 echo ""
 
-# Check iteration count from CONFIG.yaml
-if [ -f "$CONFIG_FILE" ] && command -v python3 &> /dev/null; then
-  iteration_count=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG_FILE')); print(c.get('compaction',{}).get('iteration_count',0))" 2>/dev/null || echo "0")
-  threshold=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG_FILE')); print(c.get('compaction',{}).get('cycle_threshold',15))" 2>/dev/null || echo "15")
-
-  echo "=== Compaction Status ==="
-  echo "  Iteration count: $iteration_count"
-  echo "  Threshold: $threshold"
-
-  if [ "$iteration_count" -ge "$threshold" ]; then
-    echo ""
-    echo "  ⚠ COMPACTION RECOMMENDED"
-    echo "  Iteration count ($iteration_count) >= threshold ($threshold)"
-  else
-    remaining=$((threshold - iteration_count))
-    echo "  Next compaction in ~$remaining iterations"
-  fi
+# --- The brief ---
+#
+# Trace analysis is python's job: the schemas in the wild differ enough
+# (ts/date/timestamp, checks as dict or list) that grep would misread them.
+if command -v python3 &> /dev/null; then
+  python3 "$SCRIPT_DIR/lib/compact_memo.py" "$SKILL_DIR"
+else
+  echo "python3 not found - trace analysis skipped." >&2
   echo ""
 fi
 
-# Display feedback summary if FEEDBACK.jsonl exists
-FEEDBACK_FILE="$SKILL_DIR/FEEDBACK.jsonl"
-if [ -f "$FEEDBACK_FILE" ]; then
-  fb_count=$(wc -l < "$FEEDBACK_FILE" | xargs)
-  echo "=== Feedback Summary ($fb_count entries) ==="
-
-  # Calculate average outcome
-  avg=$(grep -oE '"outcome":[1-5]' "$FEEDBACK_FILE" | grep -oE '[1-5]' | awk '{ sum+=$1; count++ } END { if (count>0) printf "%.1f", sum/count }')
-  if [ -n "$avg" ]; then
-    echo "  Average outcome: $avg / 5.0"
-  fi
-
-  # Source breakdown
-  llm_count=$(grep -c '"source":"llm"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
-  script_count=$(grep -c '"source":"script"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
-  user_count=$(grep -c '"source":"user"' "$FEEDBACK_FILE" 2>/dev/null || echo "0")
-  echo "  Sources: llm=$llm_count  script=$script_count  user=$user_count"
-
-  # Show recent low scores (outcome <= 2) as compaction signals
-  low_scores=$(grep -E '"outcome":[12]' "$FEEDBACK_FILE" 2>/dev/null | tail -3)
-  if [ -n "$low_scores" ]; then
-    echo ""
-    echo "  Recent low scores (signals for compaction):"
-    echo "$low_scores" | while IFS= read -r line; do
-      note=$(echo "$line" | grep -oE '"note":"[^"]*"' | sed 's/"note":"//;s/"//')
-      prompt=$(echo "$line" | grep -oE '"prompt":"[^"]*"' | sed 's/"prompt":"//;s/"//' | cut -c1-50)
-      outcome=$(echo "$line" | grep -oE '"outcome":[1-5]' | grep -oE '[1-5]')
-      echo "    [$outcome] $prompt${note:+ - $note}"
-    done
-  fi
-  echo ""
-fi
-
-# Display MEMO.md content for review
-echo "=== Current MEMO.md Content ==="
+# --- The wiki as it stands ---
+echo "=== Current MEMO.md ==="
 echo ""
 cat "$MEMO_FILE"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Compaction Process:"
+echo "Compaction, as the Maintainer:"
 echo ""
-echo "1. REVIEW: Identify patterns that have stabilized"
-echo "   - Edge cases that are now well-understood"
-echo "   - Learnings that should be standard practice"
+echo "1. ROOT-CAUSE: turn the traces above into patterns"
+echo "   - One entry per root cause, in the pattern layout"
+echo "     (docs/skill-format.md, MEMO.md section)"
+echo "   - Every pattern cites its evidence; without evidence it is a"
+echo "     hypothesis, not a pattern"
+echo "   - A pattern whose mechanism belongs to another skill goes in that"
+echo "     owner skill's wiki; this one points at it"
 echo ""
-echo "2. GRADUATE: Move stable patterns to SKILL.md"
-echo "   - Add to appropriate section in SKILL.md"
-echo "   - Update as permanent guidance"
+echo "2. GRADUATE: move a stable pattern's workaround into SKILL.md"
+echo "   - Mark the pattern 'status: graduated (vX.Y.Z)'"
+echo "   - Name the graduated pattern slugs in the Iteration Log's"
+echo "     'Patterns' column - that column is the provenance of the edit"
 echo ""
-echo "3. PURGE: Remove from MEMO.md"
-echo "   - Delete graduated items"
-echo "   - Remove resolved/outdated edge cases"
+echo "3. PURGE: drop what the skill no longer needs"
+echo "   - 'status: purged', or delete the entry once the Iteration Log"
+echo "     names its slug"
 echo ""
-echo "4. VERSION: Update CONFIG.yaml"
-echo "   - Increment version (patch for compaction)"
-echo "   - Reset iteration_count to 0"
-echo "   - Update last_compaction date"
+echo "4. VERSION: update CONFIG.yaml"
+echo "   - Bump the skill version (patch for a compaction)"
+echo "   - Set compaction.last_compaction to today; the next harvest"
+echo "     re-derives iteration_count from it"
 echo ""
 echo "To perform compaction, use Claude:"
-echo "  'Review MEMO.md in $SKILL_NAME and graduate stable patterns to SKILL.md'"
+echo "  'Compact $SKILL_NAME: root-cause the traces into patterns and"
+echo "   graduate the stable ones'"

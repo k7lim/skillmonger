@@ -209,9 +209,15 @@ budget:
 ```
 
 **Compaction fields:**
-- `cycle_threshold`: Number of iterations before compaction is recommended (default 15)
-- `iteration_count`: Auto-incremented by feedback logging. Reset to 0 after compaction.
-- `last_compaction`: Date of last compaction (set during compact-memo.sh)
+- `cycle_threshold`: Number of traces since `last_compaction` before compaction is recommended (default 15)
+- `iteration_count`: Traces since `last_compaction`. Derived by `harvest-feedback.sh`; incremented by `log-feedback.sh` between harvests.
+- `last_compaction`: Date of last compaction. Setting it is what resets the count.
+
+Compaction is recommended when `iteration_count >= cycle_threshold` **or**
+three or more failing traces (outcome 1 or 2) have arrived since
+`last_compaction`. The second rule needs no CONFIG field; it is computed from
+the traces. `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh`
+all decide it in `scripts/lib/compaction.py`, so they cannot disagree.
 
 ## MEMO.md (Recommended)
 
@@ -245,9 +251,9 @@ _None logged yet._
 
 ## Iteration Log
 
-| Date | Version | Change Type | Description |
-|------|---------|-------------|-------------|
-| 2026-01-14 | 1.0.0 | Initial | Skill created |
+| Date | Version | Change Type | Description | Patterns |
+|------|---------|-------------|-------------|----------|
+| 2026-01-14 | 1.0.0 | Initial | Skill created | - |
 
 ---
 
@@ -257,6 +263,38 @@ _Items pending review for graduation to SKILL.md:_
 
 - (none)
 ```
+
+### Pattern entries
+
+An entry in the log is a **pattern**: one root-caused recurring failure or
+strategy (CONTEXT.md). Since format 1.2 a pattern has a fixed layout:
+
+```markdown
+### <slug>: short title
+- status: open | graduated (vX.Y.Z) | purged
+- root cause: one sentence
+- evidence: FEEDBACK ts, ts, ... (or "manual")
+- workaround: what the agent should do now
+- skill change: what SKILL.md should say if this graduates (optional)
+```
+
+- `<slug>` is lowercase-with-hyphens and stable. It is the name the Iteration
+  Log's `Patterns` column uses when the pattern graduates, so it is the
+  provenance of a skill edit.
+- `evidence` cites the traces the pattern was derived from, by timestamp. Not
+  every trace carries `ts` — deployed copies also date a run with `date` or
+  `timestamp` — so cite whichever timestamp field the trace has, quoted as
+  written. A pattern nobody has traces for cites `manual`; a pattern with no
+  evidence at all is a hypothesis, not a pattern.
+- `status: graduated (vX.Y.Z)` names the version whose SKILL.md absorbed the
+  workaround. `purged` means the skill no longer needs it.
+- A pattern has exactly one **owner skill**: the one whose mechanism it
+  describes. A dependent skill points at the owner's pattern instead of
+  copying it.
+
+Old free-form entries stay valid. Nothing rewrites existing wikis; entries
+convert as a compaction touches them, and `scripts/compact-memo.sh` flags the
+ones still missing `status` or `evidence`.
 
 ## FEEDBACK.jsonl (Auto-created)
 
