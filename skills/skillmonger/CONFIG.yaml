@@ -2,9 +2,16 @@
 
 skill:
   name: skillmonger
+  format: 2
   version: 0.2.0
   created: 2025-02-13
   updated: 2026-08-10
+
+evaluation:
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
 
 triggers:
   phrases:

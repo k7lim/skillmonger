@@ -4,23 +4,29 @@ Framework for building reusable AI agent skills. Skills deploy to Claude Code, C
 
 ## Key Concepts
 
-**Quad-file architecture** per skill:
-- `SKILL.md` — Core instructions (required). Has YAML frontmatter (`name`, `description`).
-- `CONFIG.yaml` — Metadata, triggers, compaction settings (recommended).
-- `MEMO.md` — Edge cases log, loaded on failure (recommended).
-- `FEEDBACK.jsonl` — Execution outcome log, append-only (auto-created on first use).
+`CONTEXT.md` pins the vocabulary — trace, wiki, pattern, owner skill, deployed copy, harvest, compaction, maintainer, graduation, fixture, gate run, baseline, regression, format. Use those words; it also lists the near-synonyms to keep out.
 
-**Feedback loop:** Every SKILL.md ends with an "After Execution" epilogue. The mechanism should match the output type:
+**Quad-file architecture** per skill, one file per layer:
+- `SKILL.md` — Core instructions, the executable layer (required). Has YAML frontmatter (`name`, `description`).
+- `CONFIG.yaml` — Metadata, triggers, `evaluation` and `compaction` settings (recommended).
+- `MEMO.md` — The skill's **wiki**: its root-caused **patterns**, loaded on failure (recommended).
+- `FEEDBACK.jsonl` — **Traces**, one JSON line per run, append-only (auto-created on first use).
+
+**Feedback loop:** every SKILL.md ends with an "After Execution" epilogue that appends one trace to the `FEEDBACK.jsonl` sitting beside it — the *deployed copy* the agent is running, not this repo, because a copy in a sandbox home or on Pi cannot reach this tree (ADR 0002). `scripts/harvest-feedback.sh` unions every deployed copy back into `skills/<name>/FEEDBACK.jsonl` and derives `compaction.iteration_count` from what it brings home, so a run edits no CONFIG field; `deploy-skill.sh` harvests before it overwrites anything. Harvest is the only way a trace written by a running agent reaches the repo.
+
+`evaluation.mode` in CONFIG.yaml declares how a skill is scored and `scripts/render-epilogue.sh` prints the epilogue from it. The trace schema, the CONFIG block and the format-1/format-2 difference are in `docs/skill-format.md`; the four modes are:
 - **Programmatic:** An evaluate script checks output deterministically. Preferred when possible.
 - **Qualitative:** Epilogue asks the user a skill-specific question (not generic "rate 1-5"), or the agent self-assesses against defined criteria on alternate runs.
-- **Delayed:** Don't log at execution time. Come back when ground truth is available and log with `log-feedback.sh --source user`.
+- **Delayed:** Don't score at execution time. Come back when ground truth is available and log with `log-feedback.sh --source user`.
 - **Hybrid:** Evaluate script for verifiable parts, qualitative ask for the rest.
 
-Under skill format 1 each feedback entry increments `iteration_count` in CONFIG.yaml by hand. Under format 2 the epilogue is rendered by `scripts/render-epilogue.sh` from the CONFIG `evaluation:` block, says nothing about `iteration_count`, and the count is derived when traces are harvested. Either way compaction is recommended at the threshold (default 15) **or** once three or more failing traces (outcome 1-2) have arrived since `last_compaction`, whichever comes first. The rule lives in `scripts/lib/compaction.py`; `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh` all call it rather than each computing it. See `docs/skill-format.md`.
+**Compaction:** at threshold (`cycle_threshold`, default 15 traces since `last_compaction`) or after three failing traces, compaction is due (the rule lives in `scripts/lib/compaction.py`; `log-feedback.sh`, `harvest-feedback.sh` and `compact-memo.sh` all call it). The agent takes the **Maintainer** role, root-causes the traces into patterns in the wiki, and **graduates** stable ones into SKILL.md with a version bump. `scripts/compact-memo.sh skills/<name>/` is the Maintainer's brief.
+
+**Gate:** an edit to a programmatic or hybrid skill is kept only if a **gate run** holds. `scripts/gate-skill.sh skills/<name>/` runs the skill over the held-out prompts in its `fixtures/`, scores each with the skill's evaluate script, and writes one gate trace per fixture into the repo's FEEDBACK.jsonl. The run is blind: `MEMO.md`, `memo/` and `loading.on_failure` are withheld, so the score measures the skill alone (ADR 0003). The **baseline** is the gate traces at the previous skill version. A **regression** is any fixture more than one point below its baseline, or a mean drop past `evaluation.tolerance`; it prints a revert line and reverts nothing itself. Qualitative skills are never gated. `hooks/pre-push` gates a pushed edit to a gated skill's SKILL.md; `SKILLMONGER_SKIP_GATE=1` bypasses it.
 
 **Deterministic vs natural language split:** Scripts produce data (JSON), prompts interpret meaning. `check-prereqs` is the pre-execution bookend, `evaluate` is the post-execution bookend. See Skill Script Interface below for language options.
 
-**Cross-skill dependencies:** Skills can reference other skills. Document with `dependencies.skills` in CONFIG.yaml. The dependent skill's check-prereqs script should detect availability and the SKILL.md should provide fallback guidance when the dependency is missing.
+**Cross-skill dependencies:** Skills can reference other skills. Document with `dependencies.skills` in CONFIG.yaml. A pattern lives only in its **owner skill's** wiki — the skill whose mechanism it describes — and a dependent skill points at it rather than copying it. The dependent skill's check-prereqs script should detect availability and the SKILL.md should provide fallback guidance when the dependency is missing.
 
 ## Directory Layout
 
@@ -28,7 +34,7 @@ Under skill format 1 each feedback entry increments `iteration_count` in CONFIG.
 skills/              # Skill source of truth (edit here)
 scripts/             # Framework tooling (shared across all skills)
 templates/           # DESIGN.md, sandbox-brief.md for sandbox workflow
-docs/                # skill-format.md reference
+docs/                # skill-format.md, adopting-external-skills.md, adr/
 hooks/               # Git pre-push validation hook
 vendor/              # External repos (gitignored content, don't edit)
 .claude/skills/      # Deployed skills (symlinks, don't edit directly)
@@ -42,17 +48,18 @@ vendor/              # External repos (gitignored content, don't edit)
 | `seed-skill.sh` | Capture idea to `seeds/` | nothing |
 | `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) | `templates/DESIGN.md`, `templates/sandbox-brief.md` |
 | `skill` | Show current skill status and next step | `~/.skillmonger-state` |
-| `ship-skill.sh` | Promote sandbox skill to `skills/` | `validate-skill.sh` |
+| `ship-skill.sh` | Move a sandbox skill into `skills/` | `validate-skill.sh` |
 | `validate-skill.sh` | Check structure, frontmatter, and skill format | nothing |
 | `render-epilogue.sh` | Print a skill's format-2 "After Execution" epilogue | skill's CONFIG.yaml |
 | `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |
+| `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline | `log-feedback.sh`, skill's evaluate script, `fixtures/` |
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |
-| `log-feedback.sh` | Record feedback entry | skill's CONFIG.yaml, `lib/compaction.py` |
+| `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py` |
 | `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py` |
-| `analyze-feedback.sh` | Harvest, then summarize feedback trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files |
-| `compact-memo.sh` | Print the Maintainer's brief for one skill's MEMO.md | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py` |
+| `analyze-feedback.sh` | Harvest, then summarize trace trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files |
+| `compact-memo.sh` | Brief the Maintainer for a compaction pass | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
 | `adopt-skill.sh` | Vendor an external skill and scaffold it | `scripts/lib/upstream.py` |
 | `check-upstream.sh` | Report upstream/local drift for adopted skills | `scripts/lib/upstream.py` |
@@ -61,14 +68,13 @@ vendor/              # External repos (gitignored content, don't edit)
 ## What NOT to Edit
 
 - `vendor/` — External repos. Changes get overwritten.
-- `.claude/skills/` — Deployed symlinks. Edit source in `skills/` instead.
-- `~/.claude-yolobox/skills/`, `~/.codex-yolobox/skills/` — Deployed copies for SRT agents. Re-deploy from `skills/` to update.
-- `~/.pi/agent/skills/` — Deployed copies for Pi on both host and SRT. Re-deploy from `skills/` to update.
+- Deployed copies — edit the source in `skills/` and re-deploy. `scripts/lib/deploy-targets.sh` is the one definition of where they live: the store at `~/.local/share/skillmonger/skills/`, the symlinks into it (`~/.claude/skills/`, `~/.codex/skills/`, `~/.config/opencode/skills/`, this repo's `.claude/skills/`), and the copies made where the store is unreachable (`~/.pi/agent/skills/`, and `.claude/skills/` + `.codex/skills/` under `$YOLOBOX_SANDBOX_HOME`, default `~/.local/share/yolobox/home`).
 - `skills/remotion/references/` — Sourced from upstream remotion-dev/remotion.
-- `FEEDBACK.jsonl` files — Append-only. Use `log-feedback.sh` to add entries in
-  the repo; `harvest-feedback.sh` appends the ones agents wrote into deployed
-  copies. A deployed copy's FEEDBACK.jsonl is the one file agents are meant to
-  write to (ADR 0002); everything else under a deploy target is still off limits.
+- `FEEDBACK.jsonl` files — Append-only, never rewritten. `log-feedback.sh`
+  writes traces in the repo; `harvest-feedback.sh` brings home the ones agents
+  wrote into deployed copies. A deployed copy's FEEDBACK.jsonl is the one file
+  an agent running that copy is meant to write to (ADR 0002); every other file
+  in that copy is edited here, in `skills/`, and re-deployed.
 
 ## Validation Constraints
 
@@ -77,6 +83,8 @@ Enforced by `validate-skill.sh` and `hooks/pre-push`:
 - `description`: max 1024 chars.
 - SKILL.md word count warning at >5000 words.
 - CONFIG.yaml must be valid YAML (if PyYAML available).
+- `skill.format`: an integer the script knows; absent means 1.
+- Under format 2, the `evaluation` block: `mode` is required and is one of `programmatic | qualitative | delayed | hybrid`, and `programmatic`/`hybrid` need an `evaluation.script` that exists and is executable.
 
 ## Working with Skills
 
@@ -87,21 +95,12 @@ Enforced by `validate-skill.sh` and `hooks/pre-push`:
 **To create a new skill (sandbox):** For skills that need design work or iteration:
 
 ```
-# Write seed in skillmonger
-echo "idea" > seeds/my-skill.md
-
-# Scaffold in sandbox (copies seed → PLAN.md)
-develop-skill.sh
-
-# Check where you left off
-scripts/skill status
-
-# Agent builds it in sandbox
-cd ~/Development/sandbox/skills/my-skill
+echo "idea" > seeds/my-skill.md          # write the seed here
+develop-skill.sh                         # scaffold in sandbox (seed → PLAN.md)
+scripts/skill status                     # where you left off, any time
+cd ~/Development/sandbox/skills/my-skill # the agent builds it there
 claude "Read BRIEF.md and build the skill"
-
-# Promote to skills/
-scripts/ship-skill.sh ~/Development/sandbox/skills/my-skill
+scripts/ship-skill.sh ~/Development/sandbox/skills/my-skill   # into skills/
 ```
 
 `BRIEF.md` is a disposable task brief with interface contracts and build specs — not long-term context. It is not shipped. `PLAN.md` carries the seed idea and any detailed plan into the sandbox.
@@ -120,7 +119,7 @@ Adopted skills record provenance in `CONFIG.yaml:upstream` (authoritative) and
 drift; `scripts/sync-upstream.sh <skill>` applies upstream changes, fast-forwarding
 `verbatim` files and blocking on `adapted` ones.
 
-**To add evaluation:** Create an evaluate script in `skills/<name>/scripts/` (any language — see Skill Script Interface). It reads skill output from stdin, outputs JSON with `outcome` (1-5), `note`, `checks`, and `source` fields. See `skills/centers-of-excellence/scripts/evaluate.sh` as the exemplar. Not all skills need this — see feedback patterns above.
+**To add evaluation:** Create an evaluate script in `skills/<name>/scripts/` (any language — see Skill Script Interface). It reads skill output from stdin, outputs JSON with `outcome` (1-5), `note`, `checks`, and `source` fields. See `skills/centers-of-excellence/scripts/evaluate.sh` as the exemplar. Then point `evaluation.script` at it and re-render the epilogue. Two CONFIG keys cover the evaluators the template cannot describe: `script_usage` overrides the command line the epilogue shows when the script takes something other than the skill's output, and `script_emits_outcome: false` marks an evaluator whose `outcome` does not judge this skill's own work, which routes the score to self-assessment. Not all skills need an evaluator — see the modes above.
 
 ## Skill Script Interface
 
@@ -132,8 +131,8 @@ Scripts in a skill's `scripts/` directory are executables that follow a standard
 - Exit: 0 always (readiness is in the JSON, not the exit code)
 
 **`evaluate`** — run after execution, scores the output:
-- Input: skill output via stdin or file argument (`$1` / `sys.argv[1]`)
-- Output (stdout): `{"outcome": 1-5, "note": "...", "checks": {...}, "source": "script"}`
+- Input: skill output via stdin or file argument (`$1` / `sys.argv[1]`). A script that takes something else instead — a project directory, a saved JSON file — declares the real command line in `evaluation.script_usage` so the epilogue does not state something untrue.
+- Output (stdout): `{"outcome": 1-5, "note": "...", "checks": {...}, "source": "script"}`. A script whose `outcome` scores something other than this skill's own work declares `evaluation.script_emits_outcome: false`; the epilogue then runs it for evidence and scores by self-assessment.
 - Exit: 0 on successful evaluation (even if outcome is low)
 
 **Language choice:**
@@ -156,9 +155,12 @@ The SKILL.md epilogue references the actual filename. Scaffolding generates `.sh
 # Validate all skills (same as pre-push hook)
 for d in skills/*/; do scripts/validate-skill.sh "$d"; done
 
-# Test feedback pipeline
+# Test the trace pipeline
 scripts/log-feedback.sh <skill> --outcome 4 --prompt "test" --source user
 scripts/analyze-feedback.sh
+
+# Bring traces home from every deployed copy (idempotent; run before compaction)
+scripts/harvest-feedback.sh <skill>
 ```
 
 ## Landing the Plane (Session Completion)
@@ -172,8 +174,12 @@ scripts/analyze-feedback.sh
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
-   git pull --rebase
-   bd sync
+   git pull --rebase --autostash
+   # bd 1.0.0 exports; it has no sync. Check the DB is hydrated first -- a
+   # partial one overwrites .beads/issues.jsonl with fewer issues.
+   bd list                                     # is this the issue set you expect?
+   [ "$(bd list --all --json | jq length)" -ge "$(wc -l < .beads/issues.jsonl)" ] \
+     && bd export -o .beads/issues.jsonl
    git push
    git status  # MUST show "up to date with origin"
    ```
@@ -182,7 +188,5 @@ scripts/analyze-feedback.sh
 7. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
+- Push yourself, in this session — stopping short leaves the work stranded locally
 - If push fails, resolve and retry until it succeeds

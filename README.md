@@ -2,7 +2,7 @@
 
 Build reusable AI agent skills that work across Claude Code, Codex, and Gemini.
 
-A skill is a structured prompt that agents load on demand. Write it once, deploy it everywhere, and improve it over time through a built-in feedback loop.
+A skill is a directory of instructions that agents load on demand. Write it once, deploy it everywhere, and improve it over time through a built-in feedback loop.
 
 ## When to Create a Skill
 
@@ -14,14 +14,20 @@ The first time you explain a workflow to an agent, it's a conversation. The thir
 
 ## How Skills Work
 
-Every skill is a directory with up to four files:
+Every skill is a directory with up to four files, one per layer:
 
-- **SKILL.md** — Core instructions the agent follows (required)
-- **CONFIG.yaml** — Metadata, triggers, and compaction settings (recommended)
-- **MEMO.md** — Edge cases log, loaded on failure (recommended)
-- **FEEDBACK.jsonl** — Execution outcome log, auto-created on first use
+- **SKILL.md** — Core instructions the agent follows, the executable layer (required)
+- **CONFIG.yaml** — Metadata, triggers, evaluation and compaction settings (recommended)
+- **MEMO.md** — The skill's *wiki*: the patterns learned about it, loaded on failure (recommended)
+- **FEEDBACK.jsonl** — *Traces*, one line per run, auto-created on first use
 
-Full format reference: [docs/skill-format.md](docs/skill-format.md)
+A run appends its trace to the copy of the skill the agent is running, and
+`harvest-feedback.sh` brings those traces back here; enough of them trigger a
+compaction pass that turns them into patterns and graduates the stable ones into
+SKILL.md. [The Feedback Loop](#the-feedback-loop) walks the whole circuit.
+
+Full format reference: [docs/skill-format.md](docs/skill-format.md). The words
+this project uses for each part are pinned in [CONTEXT.md](CONTEXT.md).
 
 ## Quick Start
 
@@ -99,12 +105,14 @@ scripts/deploy-skill.sh skills/my-skill/ --global --format zip
 | Pi | `~/.pi/agent/skills/` | `.pi/skills/` |
 | Claude.ai | Upload zip via Settings > Features | — |
 
-Global deployment also copies skills into the separate Claude and Codex homes
-used under SRT (`~/.claude-yolobox/skills/` and
-`~/.codex-yolobox/skills/`). Those legacy-named homes cannot use the host
-symlinks because SRT denies access to the shared `~/.local` skill store.
-Pi uses its regular `~/.pi/agent` home under SRT, so its global skills are also
-copied rather than symlinked.
+Global deployment also copies skills into the sandbox home that protected
+workspaces run every agent under — `$YOLOBOX_SANDBOX_HOME/.claude/skills/` and
+`.codex/skills/`, default `~/.local/share/yolobox/home` — which cannot use the
+host symlinks because the sandbox denies the shared `~/.local` skill store. Pi
+keeps its regular `~/.pi/agent` home there, so its global skills are copied
+rather than symlinked too. `scripts/lib/deploy-targets.sh` is the one definition
+of the list, and `harvest-feedback.sh` reads the same file, so every copy's
+traces come home before a redeploy overwrites it.
 
 ## The Feedback Loop
 
@@ -121,16 +129,20 @@ Every SKILL.md includes an "After Execution" epilogue. The mechanism matches the
 
 ### How it works
 
-1. **After the agent runs a skill**, the epilogue fires
-2. **If an evaluate script exists** (`evaluate.sh`, `evaluate.py`, or any executable in `scripts/`) — run it for deterministic scoring
-3. **If qualitative** — ask the user or self-assess per the epilogue's criteria
-4. **Result** — one JSON line appended to `FEEDBACK.jsonl`, `iteration_count` incremented in CONFIG.yaml
-5. **When `iteration_count` reaches the threshold (default 15)** — compaction reminder fires
+1. **After the agent runs a skill**, the epilogue fires — rendered from `evaluation.mode` in CONFIG.yaml by `render-epilogue.sh`, so every skill says the same thing
+2. **Programmatic or hybrid** — run the evaluate script and copy its score straight through
+3. **Qualitative** — ask the user the skill's own question, or self-assess against the epilogue's criteria
+4. **The trace lands beside the running copy** — one JSON line appended to the `FEEDBACK.jsonl` in the *deployed* skill directory, not this repo, because a copy in a sandbox home or on a Pi cannot reach it. That line is the whole record; a run edits nothing in CONFIG.yaml
+5. **`harvest-feedback.sh` brings the traces home** — it unions every deployed copy into `skills/<name>/FEEDBACK.jsonl` and derives `iteration_count` from the result. `deploy-skill.sh` runs it before it overwrites a copy, so a redeploy no longer destroys what that copy accumulated
+6. **At the threshold (default 15 traces, or three failures)** — compaction is due
 
-### Manual feedback
+### Writing a trace by hand
+
+`log-feedback.sh` writes into this repo, so it is for your own use here — gate
+runs and manual scoring. No epilogue calls it: a deployed copy cannot reach it.
 
 ```bash
-# Record a manual entry (overrides LLM self-assessment)
+# Record a trace yourself (a user score overrides the agent's self-assessment)
 scripts/log-feedback.sh centers-of-excellence --outcome 4 --prompt "find CoE for tulips"
 
 # Interactive mode
@@ -155,13 +167,36 @@ scripts/analyze-feedback.sh --skill centers-of-excellence
 
 ### Compaction
 
-When feedback accumulates (`iteration_count >= 15`):
+When the traces accumulate (`iteration_count >= 15`, or three failing runs):
 
 ```bash
-scripts/compact-memo.sh skills/my-skill/
+scripts/harvest-feedback.sh my-skill        # traces first
+scripts/compact-memo.sh skills/my-skill/    # then the maintainer's brief
 ```
 
-This shows feedback summary + MEMO.md content, then guides you through graduating stable patterns to SKILL.md, purging resolved edge cases, and bumping the version.
+`compact-memo.sh` lists the traces since the last pass beside the current
+MEMO.md. You then root-cause them into patterns in the wiki, graduate the stable
+ones into SKILL.md, purge the ones that no longer happen, and bump the version.
+The wiki's iteration log names the patterns each version graduated — that is the
+provenance of a skill edit.
+
+### Gating an edit
+
+An edit to a skill scored by a script is kept only if it holds up on held-out
+prompts:
+
+```bash
+scripts/gate-skill.sh skills/my-skill/
+```
+
+The gate copies the skill, withholds `MEMO.md` so the score measures the skill
+alone, runs every prompt in the skill's `fixtures/` through it, scores each with
+the evaluate script, and compares against the same fixtures at the previous
+version. Any fixture more than a point below its baseline, or a mean drop past
+`evaluation.tolerance`, is a regression: it prints a revert line and reverts
+nothing itself. The pre-push hook runs the gate on a pushed edit to a scored
+skill; `SKILLMONGER_SKIP_GATE=1` bypasses it. Skills judged by a person are
+never gated.
 
 ## Scripts Reference
 
@@ -171,13 +206,16 @@ This shows feedback summary + MEMO.md content, then guides you through graduatin
 | `seed-skill.sh` | Capture a skill idea to `seeds/` |
 | `develop-skill.sh` | Scaffold in sandbox (copies seed → PLAN.md) |
 | `skill` | Show current skill status and next step |
-| `ship-skill.sh` | Promote sandbox skill to skillmonger |
-| `validate-skill.sh` | Validate skill structure and frontmatter |
-| `deploy-skill.sh` | Deploy skills via symlinks to tool directories |
-| `log-feedback.sh` | Record a feedback entry for a skill |
-| `analyze-feedback.sh` | Summarize feedback trends across skills |
-| `compact-memo.sh` | Guide compaction when iteration threshold reached |
-| `install-hooks.sh` | Install git pre-push hook for validation |
+| `ship-skill.sh` | Move a sandbox skill into skillmonger |
+| `validate-skill.sh` | Validate skill structure, frontmatter, and skill format |
+| `deploy-skill.sh` | Deploy skills to the tool directories and sandbox homes |
+| `log-feedback.sh` | Write a trace from inside the repo |
+| `harvest-feedback.sh` | Bring traces home from every deployed copy |
+| `analyze-feedback.sh` | Summarize trace trends across skills |
+| `compact-memo.sh` | Brief the maintainer when the threshold is reached |
+| `render-epilogue.sh` | Print a skill's "After Execution" epilogue from its CONFIG |
+| `gate-skill.sh` | Run a skill blind over its fixtures and compare to baseline |
+| `install-hooks.sh` | Install git pre-push hook for validation and gating |
 
 ## Directory Structure
 
@@ -187,9 +225,10 @@ skillmonger/
 │   └── my-skill/
 │       ├── SKILL.md           # Core instructions (required)
 │       ├── CONFIG.yaml        # Metadata & triggers
-│       ├── MEMO.md            # Edge cases log
-│       ├── FEEDBACK.jsonl     # Execution feedback log
+│       ├── MEMO.md            # The skill's wiki: its patterns
+│       ├── FEEDBACK.jsonl     # Traces, one line per run
 │       ├── references/        # Supporting docs
+│       ├── fixtures/          # Held-out prompts for gate runs
 │       └── scripts/           # evaluate.sh, check-prereqs.sh
 ├── scripts/                   # Framework tooling
 ├── templates/                 # DESIGN.md template

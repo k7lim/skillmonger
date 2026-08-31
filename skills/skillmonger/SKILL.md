@@ -66,7 +66,15 @@ Collect information from these locations:
    Drop the flag only when the user actually wants to know about new upstream
    releases; a full fetch across every vendor repo takes a while.
 
-6. **State file** (last action taken):
+6. **Skills due for compaction** (traces piled up since the last pass):
+   ```bash
+   grep -H -e iteration_count -e cycle_threshold \
+     ~/Development/host/skillmonger/skills/*/CONFIG.yaml
+   ```
+   Compare the two per skill. `iteration_count` is derived at harvest, so it
+   only counts traces already brought home; report it as of the last harvest.
+
+7. **State file** (last action taken):
    ```bash
    cat ~/.skillmonger-state 2>/dev/null
    ```
@@ -78,6 +86,7 @@ Cross-reference to identify:
 - Adopted skills with **local drift** (a verbatim file was edited — the recorded
   provenance is now false, and this is the only condition that exits non-zero)
 - Adopted skills with **upstream drift** (upstream released something newer)
+- Skills whose `iteration_count` has reached `cycle_threshold`
 - Any recorded state from last session
 
 ### Step 2: Present Status
@@ -105,6 +114,9 @@ Adopted skills:
   • skill-name - upstream v1.2.4 available, pinned at v1.2.3
   • skill-name - orphaned upstream (deleted); ours alone now
 
+Due for compaction (as of the last harvest):
+  • skill-name - 18 traces since the last pass (threshold 15)
+
 Last session:
   • skill-name - "scaffolded" at 2024-01-15 14:30
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -125,6 +137,7 @@ Based on state, suggest the most relevant action:
 | Has sandbox WIP | "Continue [skill] in sandbox?" |
 | Sandbox skill looks complete | "Ship [skill] to skills/?" |
 | Shipped but not deployed | "Deploy [skill]?" |
+| A skill is over its compaction threshold | "Compact [skill]? Its traces are piling up." |
 | Upstream released something newer | "Sync [skill] to [ref]?" |
 | User names an external repo | "Adopt a skill from it?" |
 | Nothing in flight | "Create a new seed?" |
@@ -161,6 +174,33 @@ It takes a **path**, not a bare name, and requires a mode: `--global`,
 `~/.local/share/skillmonger/skills/`, symlinks that into the Claude/Codex/
 opencode skill directories, and copies into `~/.pi/agent/` and the SRT sandbox
 homes (which cannot follow symlinks into the store).
+
+**Compact a skill:**
+```bash
+cd ~/Development/host/skillmonger
+scripts/harvest-feedback.sh [name]        # traces live in the deployed copies
+scripts/compact-memo.sh skills/[name]/    # the Maintainer's brief
+```
+Harvest first, always. A run appends its trace to the `FEEDBACK.jsonl` beside
+the copy it is running, and `iteration_count` is derived from what harvest
+brings home, so the repo's numbers are stale until it runs. Then take the
+Maintainer role: root-cause the traces into patterns in `MEMO.md` — each with
+its root cause, the traces that evidence it, and the workaround — graduate the
+stable ones into `SKILL.md`, bump the version, and name the graduated patterns
+in the wiki's iteration log. That log is the provenance of a skill edit.
+
+A pattern belongs to the skill whose mechanism it describes. If the failure is
+really another skill's, put it in that skill's `MEMO.md` and point at it from
+`dependencies.skills` instead of copying it.
+
+For a skill scored by an evaluate script, gate the graduation before keeping it:
+```bash
+scripts/gate-skill.sh skills/[name]/
+```
+It re-runs the skill blind — wiki withheld — over the held-out prompts in
+`fixtures/` and compares to the same fixtures at the previous version. A
+graduation that drops a fixture more than a point is a regression, not an
+improvement. Skills judged by a person are never gated.
 
 **Adopt a skill from an external repo:**
 ```bash
@@ -234,9 +274,17 @@ Self-assess based on:
 - Did the suggested action match user intent?
 - Did execution complete without errors?
 
-**Scale:** 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent
+Score it on the standard scale: 1=failed, 2=poor, 3=acceptable, 4=good, 5=excellent.
 
-Log to `FEEDBACK.jsonl`:
+Append one JSON line to `FEEDBACK.jsonl` in this skill directory — the copy you
+are running from, not the skillmonger repo:
+
 ```json
-{"ts":"<UTC ISO 8601>","skill":"skillmonger","version":"<from CONFIG.yaml>","prompt":"<user request>","outcome":<1-5>,"note":"<brief note>","source":"llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"skillmonger","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"<one line, especially when the outcome is not 4>","source":"llm","session":"<this session's id>","schema_version":1}
 ```
+
+Drop `session` if you do not know this session's id. That line is the whole
+record: nothing in `CONFIG.yaml` is edited by a run.
+
+Use `"source":"user"` when the score came from the user rather than from your
+own assessment.

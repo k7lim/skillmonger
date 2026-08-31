@@ -42,8 +42,11 @@ resync cheap.
 | `ours` | no upstream counterpart | not checked |
 
 **Default everything to `verbatim`. `SKILL.md` is normally the only `adapted`
-file.** Skillmonger's own furniture — `CONFIG.yaml`, `MEMO.md`, `SOURCE.md`,
-`FEEDBACK.jsonl`, `scripts/evaluate`, `scripts/check-prereqs` — is `ours`.
+file.** Skillmonger's own furniture — `CONFIG.yaml`, `MEMO.md`, `memo/`,
+`SOURCE.md`, `FEEDBACK.jsonl`, `fixtures/`, `scripts/evaluate`,
+`scripts/check-prereqs` — is `ours`. Upstream never had any of it, so a sync
+never touches it: the wiki, its overflow, the traces and the gate fixtures are
+ours to grow no matter what upstream does.
 
 This matters most for bulky skills. `learnscape/isometric-explainer` ships 3,700
 lines of engine JavaScript that upstream explicitly says to copy unchanged. Kept

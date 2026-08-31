@@ -104,11 +104,18 @@ Epilogue tells the agent: skip feedback for now. The user comes back when ground
 
 **D. Hybrid** — some parts are verifiable, some aren't. Evaluate script for the verifiable parts, qualitative ask for the rest. Log both.
 
-Include the feedback JSON format in the epilogue:
+Record the choice as `evaluation.mode` in `CONFIG.yaml` and let
+`scripts/render-epilogue.sh` write the epilogue from it — the scaffold already
+did this once, so re-render after you change the mode or add an evaluator rather
+than editing the epilogue by hand. What it prints:
+
 ```json
-{"ts":"<ISO 8601>","skill":"{{SKILL_NAME}}","version":"<from CONFIG.yaml>","prompt":"<request>","outcome":<1-5>,"note":"...","source":"script|user|llm","schema_version":1}
+{"ts":"<UTC ISO 8601>","skill":"{{SKILL_NAME}}","version":"<skill.version from CONFIG.yaml>","prompt":"<the user's original request>","outcome":<1-5>,"note":"...","source":"script|llm|user","session":"<this session's id>","schema_version":1}
 ```
-Tell the agent to append to `FEEDBACK.jsonl` and increment `iteration_count` in `CONFIG.yaml`.
+
+One line appended to the `FEEDBACK.jsonl` in the skill's own directory — the
+copy the agent is running, which is why no epilogue calls a skillmonger script.
+That line is the whole record: a run edits nothing in `CONFIG.yaml`.
 
 ## Script conventions
 
