@@ -1,0 +1,1 @@
+Where in Bret Victor's "Inventing on Principle" (https://www.youtube.com/watch?v=PUv66718DII) does he talk about creators needing an immediate connection to what they are creating? I want the timestamped moments. Your whole reply goes into scripts/evaluate.sh, so reply with only the raw JSON envelope from search-transcript — no prose around it.
