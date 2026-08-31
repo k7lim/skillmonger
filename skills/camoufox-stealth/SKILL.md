@@ -45,7 +45,7 @@ Key flags: `--out text|html|screenshot|meta` (default `text`; there is NO pdf mo
 - `--out pdf` fails with exit 2 (Playwright PDF is Chromium-only) — use `--out screenshot`, or HTML→PDF externally (see references).
 - `--block-images` prints an advisory upstream `LeakWarning` to stderr and may aid detection on some WAFs; stdout and exit code stay clean.
 
-## After execution (feedback — type A, programmatically verifiable)
+## After Execution
 
 After a run, build a run-record and pipe it to the evaluator (stdin):
 

@@ -67,7 +67,7 @@ Show file count and location. If issues: `epub2md -S <file>` shows structure, `-
 
 ---
 
-## Feedback
+## After Execution
 
 **Hybrid**: script + qualitative.
 

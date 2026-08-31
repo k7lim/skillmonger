@@ -265,7 +265,7 @@ Response JSON: `{"message": {"items": [{"DOI": "...", "title": [...], "author": 
 | Publisher paywalls (403/303) | Cannot scrape publisher sites. Use API data |
 | `/paper/search/match` 404s | Returns 404 on non-exact titles. Use `/paper/search` for fuzzy |
 
-## Feedback
+## After Execution
 
 1. Run `echo "$OUTPUT" | ./scripts/evaluate.sh` — logs the programmatic score.
 2. Ask user: "Were these papers relevant to your research question?" Map answer to 1-5 (`"source":"user"`).
