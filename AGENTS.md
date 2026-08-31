@@ -52,7 +52,7 @@ vendor/              # External repos (gitignored content, don't edit)
 | `validate-skill.sh` | Check structure, frontmatter, and skill format | nothing |
 | `render-epilogue.sh` | Print a skill's format-2 "After Execution" epilogue | skill's CONFIG.yaml |
 | `migrate-format-2.sh` | Move a skill from format 1 to format 2 | `render-epilogue.sh` |
-| `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline | `log-feedback.sh`, skill's evaluate script, `fixtures/` |
+| `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline, exit 1 on a regression | `lib/gate.py`, `lib/impact.py`, `log-feedback.sh`, skill's evaluate script, `claude` |
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies | nothing |
 | `sync-skill-back.sh` | Pull deployed changes back to source | nothing |

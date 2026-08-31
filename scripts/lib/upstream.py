@@ -50,9 +50,11 @@ OURS_ALWAYS = {
 # Same, but matched by directory prefix rather than exact file path: every
 # file under these directories is furniture, however deeply nested. `memo/`
 # holds wiki overflow (format 2.1, `memo/patterns/<slug>.md`) ahead of any
-# skill actually using it.
+# skill actually using it. `fixtures/` holds the held-out prompts a gate run
+# uses; they are seeded from this repo's own traces and no upstream has them.
 OURS_ALWAYS_PREFIXES = (
     "memo/",
+    "fixtures/",
 )
 
 SOURCE_HEADER_BEGIN = "<!-- generated-from-config:begin -->"

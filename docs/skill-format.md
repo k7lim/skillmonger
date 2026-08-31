@@ -137,10 +137,17 @@ skills/my-skill/
 │   └── patterns/
 │       └── <slug>.md     # One pattern MEMO.md outgrew
 ├── references/           # Supporting docs (optional)
+├── fixtures/             # Held-out prompts for gate runs (programmatic skills)
+│   ├── <case>.prompt.md  # The prompt, whole file, nothing else
+│   └── <case>.expect.json# Optional floor: {"min_outcome": N}
 └── scripts/              # Deterministic helpers (optional)
     ├── evaluate.sh       # Post-execution scoring (optional)
     └── check-prereqs.sh  # Prerequisite verification (optional)
 ```
+
+`fixtures/` is skillmonger furniture: adopted skills never inherit one from
+upstream, and `scripts/lib/upstream.py` classifies the whole directory as
+`ours` so it is never reported as drift.
 
 ## SKILL.md (Required)
 
@@ -438,6 +445,95 @@ in `scripts/lib/impact.py` (`group_by_version`, `gate_rows`), which
 - **Qualitative:** Epilogue asks the user a skill-specific question or alternates between user and LLM assessment.
 - **Delayed:** Don't log at execution time. Come back when ground truth is available and log with `--source user`.
 - **Hybrid:** Evaluate script for verifiable parts, qualitative ask for the rest.
+
+## Gate runs
+
+```bash
+scripts/gate-skill.sh skills/<name>/ [--baseline <sha>] [--dry-run]
+```
+
+A **gate run** re-runs a skill live against every held-out prompt in its
+`fixtures/`, scores each run with the skill's own evaluate script, and compares
+the scores to the **baseline** — the gate run before this edit. It answers one
+question: did that edit to `SKILL.md` make the skill worse? Nothing else in the
+loop asks it, because harvested traces arrive weeks apart from runs nobody
+controlled.
+
+**Which skills are gated.** `evaluation.mode` must be `programmatic` or
+`hybrid`: the evaluate script is the oracle, so a skill without one has nothing
+to be scored by. `fixtures/` must hold at least three `*.prompt.md`. Two more
+refusals are declarations the skill already made: `script_emits_outcome: false`
+(the evaluator scores something other than this skill's output, so there is no
+number to compare) and `evaluation.runner` set to anything but `claude`, which
+is reserved. Each is exit 3 with every reason listed at once. Qualitative skills
+are never gated.
+
+**Fixtures are inputs only.** A `<case>.prompt.md` is the prompt and nothing
+else: the whole file, whitespace trimmed. There is no expected output beside it,
+because the evaluate script is the judge (CONTEXT.md: **Fixture**). Seed them
+from the skill's own harvested `prompt` fields plus hand-written ones, one per
+kind of request the skill actually gets. An optional `<case>.expect.json`
+`{"min_outcome": N}` sets a floor for that fixture.
+
+**Blind.** The copy the runner loads has no `MEMO.md`, no `memo/` and no
+`loading.on_failure`, so the score measures the skill alone (ADR 0003). Set
+`evaluation.blind: false` to keep the wiki; the default is `true`. Real runs are
+unaffected — they still load the wiki on failure. The copy is a temp directory;
+the gate never writes into a deployed copy or into the skill it is testing.
+
+**Gate traces live in this repo.** Each fixture appends one line to
+`skills/<name>/FEEDBACK.jsonl` through `log-feedback.sh --gate --fixture <case>`:
+`source: script`, `gate: true`, the evaluator's `outcome`, `note` and `checks`,
+the fixture's prompt truncated, and the runner's `session` when it reports one.
+That is the exception to the harvest rule — a gate run happens *in* the repo, so
+its trace goes straight there and `analyze-feedback.sh --impact` lists it
+separately from runs somebody asked for.
+
+**Baseline.** Read before this run writes anything, from the gate traces already
+in `FEEDBACK.jsonl` for the same fixtures: the newest version that is not the
+current one, or, when a skill is gated before its version is bumped, the previous
+gate run at the current version. The report says which. With `--baseline <sha>`
+the gate instead checks that commit's `SKILL.md` into a second blind copy, runs
+it too, and logs those traces under the version named in that commit's
+`CONFIG.yaml`.
+
+**Regression** (CONTEXT.md) is judged fixture by fixture before it is judged by
+the mean:
+
+| Rule | Trips when |
+|------|-----------|
+| Per fixture | A fixture scores more than one point below its baseline |
+| Mean | The mean over shared fixtures falls by more than `evaluation.tolerance` (default 0.5) |
+| Floor | A fixture scores under its `expect.json` `min_outcome`, with or without a baseline |
+
+The one-point band absorbs the noise a live model makes; a two-point drop on a
+single fixture is a regression even when the mean rose. On a regression the gate
+exits 1 and prints the revert line:
+
+```
+git checkout <sha> -- skills/<name>/SKILL.md
+```
+
+It never runs it. `<sha>` is the `--baseline` commit when one was given, the last
+commit that touched `SKILL.md` when the edit under test is uncommitted, and the
+one before that when it is already committed. With no baseline at all the gate
+logs its traces, says `no baseline; these traces are the baseline`, and exits 0.
+
+`--dry-run` prints the plan — fixtures, what blinding removed, the invocation,
+where the baseline comes from — without invoking the model.
+
+**The runner.** `claude -p --output-format json --plugin-dir <tmp> --` with the
+blind copy shaped as a plugin and the prompt written `/<plugin>:<skill> <fixture
+prompt>`. The plugin namespace is what keeps the deployed, non-blind
+`~/.claude/skills/<name>` from shadowing the copy under test; there is no flag
+that hides it. The header comment in `scripts/gate-skill.sh` records what else
+was tried and why it does not work.
+
+The arithmetic — fixture discovery, the blind copy, baseline selection, the
+verdict — lives in `scripts/lib/gate.py`, which imports `impact.gate_rows` so the
+number the gate compares against and the table `--impact` prints cannot disagree.
+`python3 scripts/lib/gate.py --self-test` and `tests/test-gate-skill.sh` exercise
+all of it without a model.
 
 ## Skill Scripts (Optional)
 

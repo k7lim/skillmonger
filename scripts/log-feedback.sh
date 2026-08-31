@@ -22,6 +22,9 @@ Options:
   --note TEXT       Optional note about the outcome
   --source TYPE     Rating source: user (default), llm, or script
   --session ID      Session the run came from (a pj-indexed transcript id)
+  --version VALUE   Skill version this run used, when it is not the version
+                    CONFIG.yaml names today (gate-skill.sh --baseline <sha>
+                    re-runs an older SKILL.md and must record its own version)
   --from-evaluate F Take outcome, note and checks from an evaluate script's
                     JSON (a file, or - for stdin). Implies --source script.
   --gate            Mark the trace as written by a gate run, not a real run
@@ -49,6 +52,7 @@ PROMPT_TEXT=""
 NOTE=""
 SOURCE="user"
 SESSION=""
+VERSION_OVERRIDE=""
 FIXTURE=""
 GATE=false
 CHECKS_JSON=""
@@ -83,6 +87,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --session)
       SESSION="$2"
+      shift 2
+      ;;
+    --version)
+      VERSION_OVERRIDE="$2"
       shift 2
       ;;
     --fixture)
@@ -267,7 +275,11 @@ esac
 VERSION="unknown"
 CONFIG_FILE="$SKILL_DIR/CONFIG.yaml"
 
-if [ -f "$CONFIG_FILE" ]; then
+# A run against an older SKILL.md is a run of that older version, whatever
+# CONFIG.yaml says today. Only the caller knows; --version is how it says so.
+if [ -n "$VERSION_OVERRIDE" ]; then
+  VERSION="$VERSION_OVERRIDE"
+elif [ -f "$CONFIG_FILE" ]; then
   if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
     VERSION=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG_FILE')); print(c.get('skill',{}).get('version','unknown'))" 2>/dev/null || echo "unknown")
   else
@@ -323,25 +335,69 @@ echo "$JSON_LINE" >> "$FEEDBACK_FILE"
 echo "Logged feedback to $FEEDBACK_FILE"
 
 # --- Increment iteration_count in CONFIG.yaml ---
+#
+# One line changes, in place. This used to be a PyYAML load-and-dump, which
+# rewrites the whole file: every comment gone, every list re-indented. Nobody
+# noticed while the only caller was a human logging one trace by hand; a gate
+# run calls this once per fixture and would strip a CONFIG on its first pass.
 
 if [ -f "$CONFIG_FILE" ]; then
-  if command -v python3 &> /dev/null && python3 -c "import yaml" 2>/dev/null; then
-    python3 << PYEOF
-import yaml
+  if command -v python3 &> /dev/null; then
+    CONFIG_FILE="$CONFIG_FILE" python3 <<'PYEOF'
+import os
+import re
 
-with open('$CONFIG_FILE', 'r') as f:
-    config = yaml.safe_load(f)
+path = os.environ["CONFIG_FILE"]
+with open(path) as handle:
+    lines = handle.read().splitlines(True)
 
-if 'compaction' not in config:
-    config['compaction'] = {}
+KEY = re.compile(r"^(\s*)([A-Za-z0-9_.-]+):(.*)$")
 
-current = config['compaction'].get('iteration_count', 0)
-config['compaction']['iteration_count'] = current + 1
 
-with open('$CONFIG_FILE', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+def top_level(line):
+    return bool(line.strip()) and not line[:1].isspace()
 
-print(f"  iteration_count: {current} -> {current + 1}")
+
+# The compaction: block, as a line range.
+start = end = None
+for index, line in enumerate(lines):
+    if not top_level(line):
+        continue
+    if start is not None:
+        end = index
+        break
+    match = KEY.match(line)
+    if match and match.group(2) == "compaction":
+        start = index
+if start is not None and end is None:
+    end = len(lines)
+
+current = None
+if start is not None:
+    for index in range(start + 1, end):
+        match = KEY.match(lines[index])
+        if match and match.group(1) and match.group(2) == "iteration_count":
+            current = int(re.sub(r"[^0-9-]", "", match.group(3)) or 0)
+            lines[index] = "%siteration_count: %d\n" % (match.group(1), current + 1)
+            break
+
+if current is None:
+    current = 0
+    if start is not None:
+        insert = start + 1
+        for index in range(start + 1, end):
+            if lines[index].strip():
+                insert = index + 1
+        lines.insert(insert, "  iteration_count: 1\n")
+    else:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
+        lines.append("\ncompaction:\n  iteration_count: 1\n")
+
+with open(path, "w") as handle:
+    handle.write("".join(lines))
+
+print("  iteration_count: %d -> %d" % (current, current + 1))
 PYEOF
   else
     # Fallback: sed-based increment (less reliable but works without PyYAML)
