@@ -199,8 +199,7 @@ def _as_list(value):
 def dependency_skills(config_path):
     """Skills this one depends on, so the brief can name the owner candidates.
 
-    `dependencies.skills` is the documented key; several CONFIG.yaml files
-    write `sibling_skills` instead, and both mean the same relationship.
+    `dependencies.skills` is the one key (CONTEXT.md, Dependent skill).
     """
     if not os.path.exists(config_path):
         return []
@@ -212,8 +211,7 @@ def dependency_skills(config_path):
             config = {}
         deps = config.get("dependencies") if isinstance(config, dict) else None
         if isinstance(deps, dict):
-            for key in ("skills", "sibling_skills"):
-                names.extend(_as_list(deps.get(key)))
+            names.extend(_as_list(deps.get("skills")))
     else:
         inside = False
         key = None
@@ -225,7 +223,7 @@ def dependency_skills(config_path):
                 break
             if not inside:
                 continue
-            match = re.match(r"\s+(skills|sibling_skills)\s*:(.*)$", line)
+            match = re.match(r"\s+(skills)\s*:(.*)$", line)
             if match:
                 key = match.group(1)
                 rest = match.group(2).strip()

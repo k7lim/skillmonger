@@ -51,7 +51,7 @@ dependencies:
     - python3
     - jq
     - npx
-  sibling_skills:
+  skills:
     - yt-dlp
   optional_pip:
     - yt-fts
