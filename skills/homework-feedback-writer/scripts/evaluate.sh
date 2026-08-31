@@ -13,7 +13,10 @@ fi
 # Initialize
 outcome=5
 note=""
-declare -A checks
+check_slop_words=0
+check_hedge_words=0
+check_passive_voice=0
+check_wordy_phrases=0
 
 # Helper: count matches (handles grep exit code 1 when no match)
 count_matches() {
@@ -32,7 +35,7 @@ get_matches() {
 # --- Slop words check ---
 SLOP_WORDS="delve|crucial|pivotal|showcase|foster|landscape|tapestry|groundbreaking|utilize|facilitate|leverage|underscore"
 slop_count=$(count_matches "$SLOP_WORDS")
-checks["slop_words"]=$slop_count
+check_slop_words=$slop_count
 
 if [ "$slop_count" -gt 0 ]; then
   slop_found=$(get_matches "$SLOP_WORDS")
@@ -47,7 +50,7 @@ fi
 # --- Hedge words check ---
 HEDGE_WORDS="somewhat|arguably|perhaps|a bit|tends to|might be|could potentially|may potentially"
 hedge_count=$(count_matches "$HEDGE_WORDS")
-checks["hedge_words"]=$hedge_count
+check_hedge_words=$hedge_count
 
 if [ "$hedge_count" -gt 0 ]; then
   hedge_found=$(get_matches "$HEDGE_WORDS")
@@ -62,7 +65,7 @@ fi
 # --- Passive voice check (common patterns) ---
 PASSIVE_PATTERNS="could be|should be|would be|can be|is being|was being|has been|have been|had been|will be"
 passive_count=$(count_matches "$PASSIVE_PATTERNS")
-checks["passive_voice"]=$passive_count
+check_passive_voice=$passive_count
 
 if [ "$passive_count" -gt 2 ]; then
   if [ -n "$note" ]; then
@@ -76,7 +79,7 @@ fi
 # --- Verbosity check (wordy phrases) ---
 WORDY_PHRASES="serves as|in order to|a wide variety of|due to the fact|at this point in time|for the purpose of"
 wordy_count=$(count_matches "$WORDY_PHRASES")
-checks["wordy_phrases"]=$wordy_count
+check_wordy_phrases=$wordy_count
 
 if [ "$wordy_count" -gt 0 ]; then
   wordy_found=$(get_matches "$WORDY_PHRASES")
@@ -102,5 +105,5 @@ fi
 
 # --- Output JSON ---
 cat << EOF
-{"outcome":$outcome,"note":"$note","checks":{"slop_words":${checks[slop_words]},"hedge_words":${checks[hedge_words]},"passive_voice":${checks[passive_voice]},"wordy_phrases":${checks[wordy_phrases]}},"source":"script"}
+{"outcome":$outcome,"note":"$note","checks":{"slop_words":${check_slop_words},"hedge_words":${check_hedge_words},"passive_voice":${check_passive_voice},"wordy_phrases":${check_wordy_phrases}},"source":"script"}
 EOF

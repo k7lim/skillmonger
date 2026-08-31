@@ -1,0 +1,3 @@
+give feedback on this essay intro from an 8th grader. The assignment was an argumentative essay with a clear thesis on a cause of the American Civil War. Here is her first paragraph:
+
+The Civil War was a very important event that happened in America from 1861 to 1865. Many people died and it changed the country forever. There were many causes of the Civil War such as slavery, states rights, and the election of Abraham Lincoln. Some people think it was about one thing and some people think it was about another thing. In this essay I will talk about the causes of the Civil War and why it was so important to American history.
