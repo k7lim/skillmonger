@@ -55,9 +55,9 @@ vendor/              # External repos (gitignored content, don't edit)
 | `gate-skill.sh` | Run a skill blind over its `fixtures/`, compare to baseline, exit 1 on a regression | `lib/gate.py`, `lib/impact.py`, `log-feedback.sh`, skill's evaluate script, `claude`, `lib/skill-name.sh` |
 | `deploy-skill.sh` | Install skills, link host tool directories, and copy into SRT agent homes | `validate-skill.sh`, `harvest-feedback.sh`, `lib/deploy-targets.sh`, `lib/skill-name.sh` |
 | `undeploy-skill.sh` | Remove deployed symlinks and installed copies; harvests first, `--dry-run` plans, `--yes` for non-interactive removal | `harvest-feedback.sh`, `lib/deploy-targets.sh`, `lib/skill-name.sh` |
-| `sync-skill-back.sh` | Pull deployed changes back to source | `lib/skill-name.sh` |
-| `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py`, `lib/skill-name.sh` |
-| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py`, `lib/skill-name.sh` |
+| `sync-skill-back.sh` | Pull deployed changes back to source | `lib/skill-name.sh`, `lib/skill-lock.sh` |
+| `log-feedback.sh` | Write a trace from inside the repo (gate runs, manual logging) | skill's CONFIG.yaml, `lib/compaction.py`, `lib/skill-name.sh`, `lib/skill-lock.sh` |
+| `harvest-feedback.sh` | Union traces from every deployed copy into `skills/`, derive `iteration_count` | `lib/deploy-targets.sh`, `lib/harvest.py`, `lib/compaction.py`, `lib/skill-name.sh`, `lib/skill-lock.sh` |
 | `analyze-feedback.sh` | Harvest, then summarize trace trends; `--impact` groups outcomes by skill version | `harvest-feedback.sh`, `lib/impact.py`, skill FEEDBACK.jsonl files, `lib/skill-name.sh` |
 | `compact-memo.sh` | Brief the Maintainer for a compaction pass; `--overflow` spills an outgrown wiki into `memo/patterns/` | `harvest-feedback.sh`, `lib/compact_memo.py`, `lib/compaction.py`, `lib/overflow.py`, `lib/skill-name.sh` |
 | `install-hooks.sh` | Install git pre-push hook | `hooks/pre-push` |
