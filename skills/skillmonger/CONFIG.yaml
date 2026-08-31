@@ -51,4 +51,4 @@ loading:
 
 compaction:
   cycle_threshold: 15
-  iteration_count: 11
+  iteration_count: 13

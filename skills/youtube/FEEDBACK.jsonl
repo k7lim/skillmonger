@@ -1,0 +1,1 @@
+{"ts":"2026-08-20T22:00:00Z","skill":"youtube","version":"0.2.1","prompt":"captioned cardboard foosball and goal-sensor research","outcome":3,"note":"Two relevant captioned construction videos were identified and deep-dived, but transcript retrieval failed with HTTP 429/DNS and no captioned goal-sensor result was found; no actuators used.","source":"script","schema_version":1}

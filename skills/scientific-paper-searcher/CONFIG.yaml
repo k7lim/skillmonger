@@ -53,7 +53,7 @@ loading:
 
 compaction:
   cycle_threshold: 15
-  iteration_count: 0
+  iteration_count: 7
 
 budget:
   skill_max: 2000
