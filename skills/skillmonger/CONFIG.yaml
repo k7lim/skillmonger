@@ -3,9 +3,9 @@
 skill:
   name: skillmonger
   format: 2
-  version: 0.2.0
+  version: 0.2.1
   created: 2025-02-13
-  updated: 2026-08-10
+  updated: 2026-09-01
 
 evaluation:
   mode: qualitative
@@ -58,4 +58,5 @@ loading:
 
 compaction:
   cycle_threshold: 15
-  iteration_count: 14
+  last_compaction: 2026-09-01
+  iteration_count: 1

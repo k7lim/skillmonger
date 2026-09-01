@@ -150,7 +150,11 @@ Ask the user which action to take using AskUserQuestion if multiple options exis
 ```bash
 cd ~/Development/host/skillmonger
 scripts/develop-skill.sh
-# Select the seed when prompted, or pass name if script supports it
+# Interactive only — it takes no arguments. Non-interactive: pipe the answers
+# in prompt order (seed number, then the one-liner; a name is asked only if
+# you chose 0, and a "Continue anyway?" can appear on name warnings):
+#   printf '1\nwhat the skill does\n' | scripts/develop-skill.sh
+# Then verify the scaffold exists in ~/Development/sandbox/skills/<name>.
 ```
 Then tell user: `cd ~/Development/sandbox/skills/[name] && claude "Read BRIEF.md and build the skill"`
 
