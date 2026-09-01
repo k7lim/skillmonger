@@ -1,0 +1,54 @@
+# Configuration for yell-at-me
+
+skill:
+  name: yell-at-me
+  format: 2
+  version: 0.1.0
+  created: 2026-09-01
+  updated: 2026-09-01
+  author: kevin
+
+evaluation:
+  # Qualitative: whether a yell was warranted is the whole skill, and a
+  # placement lint would score a message that yells about nothing 5/5.
+  mode: qualitative
+  blind: true
+  tolerance: 0.5
+  runner: claude
+
+triggers:
+  phrases:
+    - "yell at me"
+    - "yell at me when you need me"
+    - "get my attention when you're blocked"
+    - "ping me when you need something"
+    - "I'm stepping away"
+    - "I'll be AFK for a while"
+    - "shout when it's my turn"
+    - "stop yelling"
+  keywords:
+    - yell
+    - attention
+    - afk
+    - blocked
+    - away
+
+dependencies:
+  tools: []
+  cli: []
+
+loading:
+  primary: SKILL.md
+  on_failure: MEMO.md
+  always_load:
+    - CONFIG.yaml
+
+compaction:
+  cycle_threshold: 15
+  last_compaction: null
+  iteration_count: 0
+
+budget:
+  metadata_max: 100
+  skill_max: 5000
+  memo_max: 2000
